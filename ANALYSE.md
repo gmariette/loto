@@ -105,12 +105,13 @@ projet est un verdict negatif utile : aucun signal reproductible et donc aucune 
 ## 7. Stockage reproductible
 
 Les ZIP officiels sont conserves localement dans `data/`. La commande `build-db` construit une
-base SQLite normalisee avec quatre tables :
+base SQLite normalisee avec cinq tables :
 
 - `sources` : provenance, empreinte SHA-256 et date d'import ;
 - `draws` : jeu, regime, date, numero Chance ou complementaire ;
 - `draw_numbers` : numeros principaux par position ;
 - `prizes` : nombre de gagnants et rapport de chaque rang lorsqu'ils existent dans l'archive.
+- `code_prizes` : nombre de codes gagnants et rapport unitaire lorsqu'ils existent.
 
 La contrainte d'unicite rend l'import idempotent. La base n'est pas publiee dans Git : elle est
 reconstruite depuis les archives FDJ afin de rester actualisable et verifiable.
@@ -128,8 +129,9 @@ variables sont construites avant que tous les tirages de cette date soient ajout
 - effet propre a chacun des 49 numeros.
 
 Trois familles sont comparees : posterior bayesien regularise, regression logistique penalisee et
-gradient boosting avec regularisation L2. La selection des hyperparametres est effectuee dans une
-fenetre temporelle interne; seul le fold externe sert a annoncer la performance.
+gradient boosting avec regularisation L2. La selection des hyperparametres et du poids de
+retraction vers l'uniforme est effectuee dans une fenetre temporelle interne; seul le fold externe
+sert a annoncer la performance.
 
 Les criteres de qualification sont cumulatifs : delta Brier moyen negatif, borne haute bootstrap
 a 95 % negative et test de permutation corrige par Holm inferieur a 5 %. Sans cela, l'API renvoie
@@ -138,9 +140,10 @@ mauvais en faux pronostic.
 
 ## 9. Valeur monetaire
 
-Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Il combine les
-probabilites exactes avec les rapports medians des rangs 2 a 9 et le jackpot annonce, ajuste par
-un nombre attendu de co-gagnants. Un bootstrap sur les tirages historiques fournit un intervalle
-d'incertitude. La decision reste `no_bet` tant que sa borne basse ne couvre pas le prix de la
-grille. Les codes gagnants et la popularite reelle des combinaisons ne sont pas observables dans
-les archives, donc le moteur les signale explicitement comme limites.
+Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Le rang 9 estime la
+participation car son esperance de gagnants est le nombre de grilles multiplie par sa probabilite
+exacte. Une validation temporelle compare Ridge et gradient boosting a une mediane par jeu et jour.
+Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool median des codes au
+nombre de grilles. Un bootstrap combine l'incertitude de rapports et l'erreur de participation.
+La decision reste `no_bet` tant que sa borne basse ne couvre pas le prix de la grille. La popularite
+reelle d'une combinaison reste inconnue et se teste seulement par scenario.

@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS prizes (
     PRIMARY KEY (draw_id, rank)
 );
 
+CREATE TABLE IF NOT EXISTS code_prizes (
+    draw_id INTEGER PRIMARY KEY REFERENCES draws(id) ON DELETE CASCADE,
+    winners INTEGER,
+    payout REAL
+);
+
 CREATE INDEX IF NOT EXISTS idx_draws_date ON draws(draw_date);
 CREATE INDEX IF NOT EXISTS idx_draws_game_regime ON draws(game, regime);
 CREATE INDEX IF NOT EXISTS idx_draw_numbers_number ON draw_numbers(number);
@@ -72,7 +78,7 @@ def initialize_database(path: str | Path) -> sqlite3.Connection:
     connection = connect_database(target)
     connection.executescript(SCHEMA)
     connection.execute(
-        "INSERT OR REPLACE INTO metadata(key, value) VALUES ('schema_version', '1')"
+        "INSERT OR REPLACE INTO metadata(key, value) VALUES ('schema_version', '2')"
     )
     connection.commit()
     return connection
@@ -96,6 +102,8 @@ def _upsert_draw(
     extra_number: int,
     source_file: str,
     prizes: tuple[PrizeResult, ...],
+    code_winners: int | None = None,
+    code_payout: float | None = None,
 ) -> int:
     main_key = "-".join(str(number) for number in sorted(main))
     connection.execute(
@@ -125,6 +133,12 @@ def _upsert_draw(
         "INSERT INTO prizes(draw_id, rank, winners, payout) VALUES (?, ?, ?, ?)",
         ((draw_id, prize.rank, prize.winners, prize.payout) for prize in prizes),
     )
+    connection.execute("DELETE FROM code_prizes WHERE draw_id = ?", (draw_id,))
+    if code_winners is not None or code_payout is not None:
+        connection.execute(
+            "INSERT INTO code_prizes(draw_id, winners, payout) VALUES (?, ?, ?)",
+            (draw_id, code_winners, code_payout),
+        )
     return draw_id
 
 
@@ -154,6 +168,8 @@ def import_current_archive(connection: sqlite3.Connection, path: str | Path) -> 
             extra_number=draw.chance,
             source_file=source.name,
             prizes=draw.prizes,
+            code_winners=draw.code_winners,
+            code_payout=draw.code_payout,
         )
     connection.commit()
     return len(draws)
@@ -234,6 +250,23 @@ def _load_prizes(connection: sqlite3.Connection, draw_id: int) -> tuple[PrizeRes
     )
 
 
+def _load_code_prize(
+    connection: sqlite3.Connection, draw_id: int
+) -> tuple[int | None, float | None]:
+    try:
+        row = connection.execute(
+            "SELECT winners, payout FROM code_prizes WHERE draw_id = ?", (draw_id,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None, None
+    if row is None:
+        return None, None
+    return (
+        int(row["winners"]) if row["winners"] is not None else None,
+        float(row["payout"]) if row["payout"] is not None else None,
+    )
+
+
 def load_current_database(path: str | Path) -> list[Draw]:
     connection = connect_database(path)
     try:
@@ -244,16 +277,22 @@ def load_current_database(path: str | Path) -> list[Draw]:
             ORDER BY draw_date, game, id
             """
         ).fetchall()
-        return [
-            Draw(
-                _load_numbers(connection, int(row["id"])),
-                int(row["extra_number"]),
-                date.fromisoformat(str(row["draw_date"])),
-                str(row["game"]),
-                _load_prizes(connection, int(row["id"])),
+        draws = []
+        for row in rows:
+            draw_id = int(row["id"])
+            code_winners, code_payout = _load_code_prize(connection, draw_id)
+            draws.append(
+                Draw(
+                    _load_numbers(connection, draw_id),
+                    int(row["extra_number"]),
+                    date.fromisoformat(str(row["draw_date"])),
+                    str(row["game"]),
+                    _load_prizes(connection, draw_id),
+                    code_winners,
+                    code_payout,
+                )
             )
-            for row in rows
-        ]
+        return draws
     finally:
         connection.close()
 
@@ -314,6 +353,13 @@ def database_info(
             "by_game_and_regime": counts,
             "sources": connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0],
             "prize_rows": connection.execute("SELECT COUNT(*) FROM prizes").fetchone()[0],
+            "code_prize_rows": (
+                connection.execute("SELECT COUNT(*) FROM code_prizes").fetchone()[0]
+                if connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'code_prizes'"
+                ).fetchone()
+                else 0
+            ),
             "imported": imported,
         }
     finally:

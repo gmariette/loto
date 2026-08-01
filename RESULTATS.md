@@ -1,7 +1,7 @@
 # Resultats sur toutes les archives
 
 Calculs effectues le 1er aout 2026 avec les 11 archives disponibles sur la page historique FDJ.
-La base locale contient 5 566 tirages et 40 660 lignes de gains par rang.
+La base locale contient 5 566 tirages, 40 660 lignes de gains par rang et 1 519 gains par code.
 
 ## Regime actuel : 5/49 + Chance
 
@@ -35,27 +35,35 @@ compense pas ses probabilites moins bien calibrees et n'implique aucun avantage 
 
 ## Validation ML imbriquee
 
-La version 0.2 ajoute 63 variables, une selection interne d'hyperparametres, trois folds externes,
-2 000 bootstraps et permutations, puis une correction de Holm entre modeles. L'evaluation porte
-sur 2 309 tirages jamais utilises pour ajuster le fold correspondant.
+La version 0.3 ajoute aux 63 variables une retraction vers l'uniforme choisie dans chaque fenetre
+interne. Trois folds externes, 2 000 bootstraps et permutations, puis une correction de Holm entre
+modeles evaluent 2 309 tirages jamais utilises pour ajuster le fold correspondant.
 
 | Modele | Delta Brier | IC 95 % du delta | Log-loss | Hits Top-5 | Qualifie |
 |---|---:|---:|---:|---:|---:|
-| Bayesien, prior 1000 | +0,0000326 | [+0,0000175 ; +0,0000467] | 0,32972 | 0,5193 | non |
-| Logistique, C selectionne | +0,0001913 | [+0,0001403 ; +0,0002410] | 0,33062 | 0,5106 | non |
-| Gradient boosting | +0,0000240 | [+0,0000091 ; +0,0000389] | 0,32968 | 0,5110 | non |
+| Bayesien retracte | +0,00000498 | [-0,00000022 ; +0,00001013] | 0,32957 | 0,5058 | non |
+| Logistique retractee | +0,00001011 | [-0,00000422 ; +0,00002396] | 0,32960 | 0,5154 | non |
+| Gradient boosting retracte | +0,00002437 | [+0,00000961 ; +0,00003891] | 0,32968 | 0,5032 | non |
 
-La log-loss uniforme vaut `0,32954`. Tous les intervalles sont strictement positifs : les modeles
-ML sont moins bons que l'uniforme, pas seulement non concluants. La commande `ml-predict` renvoie
-donc `abstention`. En mode force, la meilleure variante n'ecarte les probabilites marginales que
-d'environ 10,2 % a 10,8 %, ce qui illustre l'absence de signal fort.
+La log-loss uniforme vaut `0,32954`. La retraction reduit la degradation moyenne du bayesien
+d'environ 85 % et celle de la logistique d'environ 95 % par rapport a la version 0.2. Elle ne cree
+cependant aucun avantage: les deux intervalles couvrent zero et le gradient reste moins bon. Sur
+tout l'historique, le poids de production choisi vaut zero pour le bayesien et la logistique.
+La commande `ml-predict` renvoie donc `abstention`.
 
-## Esperance monetaire
+## Participation et esperance monetaire
 
-Sur 1 471 tirages Loto possedant les neuf rangs modernes, un jackpot annonce de 10 M EUR et zero
-co-gagnant suppose donne une esperance estimee de `1,32 EUR` pour `2,20 EUR` mises, soit un ROI de
-`59,8 %`. Le seuil ponctuel approche `26,86 M EUR`, avant modelisation des codes participants,
-du partage reel du jackpot et des variations futures de rapports. La decision reste `no_bet`.
+Le nombre de gagnants du rang 9 permet d'estimer le nombre de grilles sur 1 519 tirages modernes.
+Sur 1 019 observations futures, le gradient boosting atteint une RMSE logarithmique de `0,2187`
+contre `0,2315` pour la mediane segmentee, soit `5,54 %` d'amelioration. Le delta MSE apparie a un
+IC 95 % de `[-0,01011 ; -0,00110]` et une p-value corrigee de Holm de `0,013`; il est qualifie.
+La regression Ridge, amelioree de `2,38 %`, ne se qualifie pas car son intervalle couvre zero.
+
+Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,40 millions` de grilles, `0,283`
+co-gagnant moyen et un facteur de partage du jackpot de `0,871`. En ajoutant environ `0,037 EUR`
+de codes, l'esperance vaut `1,285 EUR` pour `2,20 EUR`, soit un ROI de `58,43 %`, avec un IC 95 %
+de `[1,244 ; 1,330]`. Le jackpot d'equilibre indicatif vaut `30,03 M EUR` a participation figee.
+La decision reste `no_bet`.
 
 ## Regime historique : 6/49 + complementaire
 

@@ -1,6 +1,8 @@
 import unittest
 from datetime import date, timedelta
 
+from test_participation import participation_draws
+
 from loto_lab.domain import Draw, PrizeResult
 from loto_lab.value import estimate_value
 
@@ -16,6 +18,33 @@ class ValueTests(unittest.TestCase):
         self.assertEqual(result.reference_draws, 10)
         self.assertGreater(result.estimated_ev, 0)
         self.assertGreater(result.fair_jackpot, 0)
+
+    def test_automatic_participation_models_sharing_and_codes(self) -> None:
+        draws = [
+            Draw(
+                draw.main,
+                draw.chance,
+                draw.draw_date,
+                draw.game,
+                draw.prizes,
+                10,
+                20_000,
+            )
+            for draw in participation_draws()
+        ]
+        result = estimate_value(
+            draws,
+            jackpot=5_000_000,
+            expected_co_winners=None,
+            target_date=date(2021, 1, 1),
+            participation_min_train=100,
+            participation_folds=2,
+            bootstrap_simulations=100,
+        )
+        self.assertEqual(result.expected_co_winners_source, "participation_model")
+        self.assertGreater(result.estimated_tickets or 0, 0)
+        self.assertGreater(result.code_ev, 0)
+        self.assertLess(result.jackpot_share_factor, 1)
 
 
 if __name__ == "__main__":

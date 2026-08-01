@@ -18,6 +18,7 @@ from .database import build_database, database_info
 from .domain import DEFAULT_RULES, LotteryRules
 from .ml import nested_ml_backtest, predict_next_draw
 from .models import SmoothedFrequencyPredictor, standard_backtests
+from .participation import participation_backtest
 from .probability import (
     expected_budget,
     probability_of_any_prize,
@@ -162,9 +163,27 @@ def command_value(args: argparse.Namespace) -> None:
             jackpot=args.jackpot,
             game=args.game,
             expected_co_winners=args.co_winners,
+            target_date=date.fromisoformat(args.date),
+            popularity_factor=args.popularity_factor,
             bootstrap_simulations=args.simulations,
             seed=args.seed,
         ).to_dict()
+    )
+
+
+def command_participation_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    _print_json(
+        [
+            result.to_dict()
+            for result in participation_backtest(
+                draws,
+                min_train=args.min_train,
+                folds=args.folds,
+                simulations=args.simulations,
+                seed=args.seed,
+            )
+        ]
     )
 
 
@@ -287,6 +306,17 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--force", action="store_true")
     ml_predict.set_defaults(handler=command_ml_predict)
 
+    participation = subparsers.add_parser(
+        "participation-backtest",
+        help="Valider l'estimation du nombre de grilles jouees",
+    )
+    participation.add_argument("data", type=Path, nargs="+")
+    participation.add_argument("--min-train", type=int, default=500)
+    participation.add_argument("--folds", type=int, default=3)
+    participation.add_argument("--simulations", type=int, default=2_000)
+    participation.add_argument("--seed", type=int, default=0)
+    participation.set_defaults(handler=command_participation_backtest)
+
     value = subparsers.add_parser(
         "value", help="Estimer l'esperance monetaire d'un jackpot annonce"
     )
@@ -295,7 +325,14 @@ def build_parser() -> argparse.ArgumentParser:
     value.add_argument(
         "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
     )
-    value.add_argument("--co-winners", type=float, default=0.0)
+    value.add_argument(
+        "--co-winners",
+        type=float,
+        default=None,
+        help="Surcharge manuelle; sinon estimation automatique de la participation",
+    )
+    value.add_argument("--date", default=date.today().isoformat())
+    value.add_argument("--popularity-factor", type=float, default=1.0)
     value.add_argument("--simulations", type=int, default=2_000)
     value.add_argument("--seed", type=int, default=0)
     value.set_defaults(handler=command_value)

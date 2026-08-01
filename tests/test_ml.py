@@ -6,6 +6,7 @@ import numpy as np
 
 from loto_lab.domain import Draw
 from loto_lab.ml import (
+    blend_with_uniform,
     build_feature_dataset,
     nested_ml_backtest,
     predict_next_draw,
@@ -31,6 +32,11 @@ class MLTests(unittest.TestCase):
         projected = project_inclusion_probabilities(np.linspace(0.01, 0.8, 49))
         self.assertAlmostEqual(float(projected.sum()), 5)
         self.assertTrue(np.all((projected > 0) & (projected < 1)))
+
+    def test_zero_blend_is_exactly_uniform(self) -> None:
+        probabilities = np.linspace(0.01, 0.2, 49)[np.newaxis, :]
+        blended = blend_with_uniform(probabilities, 0.0)
+        np.testing.assert_allclose(blended, 5 / 49)
 
     def test_feature_dataset_has_one_row_per_number(self) -> None:
         dataset = build_feature_dataset(dated_random_draws(80), min_history=20)
