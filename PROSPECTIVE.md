@@ -43,3 +43,12 @@ Depuis la version 0.12, chaque nouvelle prevision publie aussi son `evaluation_c
 code scientifique, des parametres et des dependances du moteur de valeur. La prevision v0.7 conserve
 une valeur `null`; lui attribuer cette information apres coup creerait une fausse provenance. Si son
 score devient comparable, le registre l'isolera dans une cohorte historique liee a sa version.
+
+## Experience de numeros du 1er aout 2026
+
+Une [experience sans mise](evidence/numbers-2026-08-01.json) a ete figee a 16 h 29, heure de Paris,
+avant la cloture. Elle compare une sortie ML forcee, trois controles uniformes et trois grilles
+anti-partage. Le modele ML n'a produit aucune hierarchie: toutes ses probabilites marginales valent
+exactement `5/49`; ses numeros sont donc un repli pseudo-aleatoire reproductible. Cette echeance sert
+uniquement a tester le protocole de publication et de scoring, pas a qualifier le modele. Empreinte
+du fichier avant tirage : `5063a19ea0879a0c3c4dcb71f4d10d340e4b04932ac76e4fdbe95e8c248edd38`.
