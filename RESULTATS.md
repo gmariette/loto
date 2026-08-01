@@ -71,31 +71,47 @@ agreges au niveau tirage par une moyenne, methode adaptee a une esperance, au li
 par rang. Avec
 environ `0,037 EUR` de codes, l'esperance vaut `1,305 EUR` pour `2,20 EUR`, soit un ROI de `59,32 %`.
 
-Le bootstrap predictif selectionne une fenetre recente de baremes dans une validation temporelle,
-puis echantillonne un prochain bareme complet et l'erreur de participation. Son IC 95 %
-`[1,107 ; 1,656]` est volontairement plus large que l'ancien intervalle d'estimation. Le
-seuil central dynamique vaut `30,227 M EUR`; la borne basse atteint seulement le prix vers
-`35,958 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
-et sont marques comme extrapolations. La decision reste `no_bet`.
+La version 0.6.0 selectionne conjointement l'horizon de baremes et une probabilite de queue dans
+une validation temporelle. Pour ce rapport, 1 176 tirages et une queue de 1 % donnent `95,59 %` de
+couverture passee. L'intervalle predictif calibre vaut `[1,038 ; 1,639]`. Le seuil central reste
+`30,227 M EUR`; la borne basse atteint le prix vers `36,925 M EUR`. Les deux depassent le jackpot
+Loto maximal de `30 M EUR` observe dans les archives et sont marques comme extrapolations. La
+decision reste `no_bet`.
 
 ## Backtest bout en bout de la valeur
 
-La version 0.5.0 conserve la coupure stricte avant toute date cible et durcit `value-backtest`.
-Trois folds bloques evaluent 983 tirages Loto du 20 avril 2020 au 29 juillet 2026. La cible est
-l'esperance du bareme observe, reconstruite avec les petits rangs, les codes et le volume du rang 9.
+La version 0.6.0 transforme les trois folds externes en walk-forward periodique. Le moteur est
+reentraine toutes les 52 dates et produit 21 periodes sur 983 tirages Loto du 20 avril 2020 au
+29 juillet 2026. Chaque ajustement n'utilise que les tirages strictement anterieurs a sa periode.
+La cible est l'esperance du bareme observe, reconstruite avec les petits rangs, les codes et le
+volume du rang 9.
 
 | Mesure | Modele complet | Reference naive |
 |---|---:|---:|
-| Biais moyen | +0,00475 EUR | -0,00752 EUR |
-| MAE | 0,11160 EUR | 0,11713 EUR |
-| RMSE | 0,13760 EUR | 0,14674 EUR |
+| Biais moyen | +0,00169 EUR | -0,00829 EUR |
+| MAE | 0,11157 EUR | 0,11717 EUR |
+| RMSE | 0,13752 EUR | 0,14686 EUR |
 
-La MAE baisse de `4,72 %`. Le delta apparie vaut `-0,00553 EUR`. Un bootstrap en blocs contigus de
-12 tirages donne l'IC 95 % `[-0,00803 ; -0,00328]`; la permutation par blocs donne `p = 0,0005`.
+La MAE baisse de `4,78 %`. Le delta apparie vaut `-0,00560 EUR`. Un bootstrap en blocs contigus de
+12 tirages donne l'IC 95 % `[-0,00808 ; -0,00337]`; la permutation par blocs donne `p = 0,0005`.
 L'amelioration face a la reference naive reste donc qualifiee sans supposer les erreurs voisines
-independantes. Les fenetres de baremes `[50, 250, 50]`, choisies dans le passe de chaque fold,
-portent la couverture predictive a `93,90 %`. Son IC bootstrap par blocs
-`[92,37 % ; 95,42 %]` contient la cible de 95 %, sans prouver une couverture parfaite.
+independantes. La couverture predictive vaut `93,90 %`, avec IC par blocs
+`[91,86 % ; 95,83 %]`: la cible de 95 % reste compatible. Le verdict cumulatif exige ces deux
+conditions et vaut `value_model_qualified = true`.
+
+Le modele bat la reference dans 19 des 21 periodes. Il fait moins bien de novembre 2024 a fevrier
+2025 (`-6,39 %`) et de fevrier a mai 2026 (`-7,33 %`), ce qui interdit de presenter l'avantage
+moyen comme permanent. Une sensibilite exploratoire du rythme donne :
+
+| Intervalle de reentrainement | Refits | Biais | MAE |
+|---|---:|---:|---:|
+| Fige par fold, v0.5.0 | 3 | +0,00475 EUR | 0,11160 EUR |
+| 52 dates, protocole principal | 21 | +0,00169 EUR | 0,11157 EUR |
+| 104 dates, exploratoire | 12 | +0,00123 EUR | 0,11164 EUR |
+| 156 dates, exploratoire | 9 | +0,00236 EUR | 0,11166 EUR |
+
+Les variantes 104/156 ont ete examinees sur le test externe et ne servent donc pas a choisir le
+protocole principal. Le rythme de 52 dates avait ete fixe avant cette comparaison.
 
 Le moteur n'a emis aucun `eligible` et donc aucun faux positif. Trois baremes observes avaient une
 EV ponctuelle superieure au prix, tous refuses par la borne basse prudente. Ce resultat confirme

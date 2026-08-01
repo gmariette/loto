@@ -149,8 +149,10 @@ loto-lab value data/loto.sqlite --game loto --jackpot 10000000 --date 2026-08-01
 ```
 
 La decision vaut `eligible` seulement si la borne basse bootstrap de l'esperance depasse le prix
-de la grille. Le calcul estime la participation, le partage Poisson du jackpot et la valeur des
-codes historiques. `--popularity-factor` teste la popularite relative d'une combinaison;
+de la grille. L'horizon historique et la probabilite de queue sont choisis dans une validation
+temporelle passee pour viser 95 % de couverture empirique. Le calcul estime la participation, le
+partage Poisson du jackpot et la valeur des codes historiques. `--popularity-factor` teste la
+popularite relative d'une combinaison;
 `--co-winners` remplace explicitement le modele pour un scenario manuel. Le rapport distingue le
 jackpot d'equilibre central du jackpot ou la borne basse atteint le prix, recalcule la participation
 a chaque niveau et signale toute extrapolation au-dela des jackpots observes.
@@ -159,13 +161,16 @@ Backtester le moteur monetaire complet sur des folds futurs :
 
 ```bash
 loto-lab value-backtest data/loto.sqlite --game loto \
-  --min-train 500 --folds 3 --simulations 2000 --block-size 12 --seed 42
+  --min-train 500 --folds 3 --refit-interval 52 \
+  --simulations 2000 --block-size 12 --seed 42
 ```
 
 La cible est l'esperance reconstruite depuis le bareme futur publie, les codes et le volume estime
 par le rang 9. La sortie compare le modele a un calcul naif sans partage ni codes, teste le delta
 MAE par bootstrap et permutation en blocs temporels, mesure la couverture predictive avec le meme
-re-echantillonnage chronologique et compte les faux `eligible`.
+re-echantillonnage chronologique et compte les faux `eligible`. Dans chaque fold externe, le modele
+est reentraine uniquement sur le passe toutes les 52 dates; chaque periode publie son propre biais,
+sa MAE, sa couverture et ses erreurs de decision.
 
 Generer dix grilles distinctes :
 

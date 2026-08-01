@@ -36,7 +36,9 @@ class ValueReport:
     lower_rank_ev: float
     lower_rank_ev_method: str
     predictive_payout_window: int
+    predictive_tail_probability: float
     payout_validation_coverage: float
+    prediction_interval_target: float
     code_ev: float
     estimated_ev: float
     estimated_roi: float
@@ -87,26 +89,27 @@ def _mean_code_pool(draws: list[Draw]) -> float:
 
 def _select_predictive_reference(
     draws: list[Draw], probabilities: dict[int, float]
-) -> tuple[list[Draw], int, float]:
+) -> tuple[list[Draw], int, float, float]:
     if len(draws) < 20:
-        return draws, len(draws), 1.0
+        return draws, len(draws), 1.0, 0.025
     cutoff = max(10, int(len(draws) * 0.8))
     base = draws[:cutoff]
     validation_values = [_lower_rank_ev(draw, probabilities) for draw in draws[cutoff:]]
     candidates = sorted({min(window, len(base)) for window in (50, 100, 250, len(base))})
-    best: tuple[tuple[float, float], int, float] | None = None
+    best: tuple[tuple[float, float], int, float, float] | None = None
     for window in candidates:
         values = [_lower_rank_ev(draw, probabilities) for draw in base[-window:]]
-        low = _quantile(values, 0.025)
-        high = _quantile(values, 0.975)
-        coverage = sum(low <= value <= high for value in validation_values) / len(
-            validation_values
-        )
-        score = (abs(coverage - 0.95), high - low)
-        if best is None or score < best[0]:
-            best = (score, window, coverage)
+        for tail_probability in (0.01, 0.025, 0.05):
+            low = _quantile(values, tail_probability)
+            high = _quantile(values, 1 - tail_probability)
+            coverage = sum(low <= value <= high for value in validation_values) / len(
+                validation_values
+            )
+            score = (abs(coverage - 0.95), high - low)
+            if best is None or score < best[0]:
+                best = (score, window, coverage, tail_probability)
     assert best is not None
-    return draws[-best[1] :], best[1], best[2]
+    return draws[-best[1] :], best[1], best[2], best[3]
 
 
 def _poisson_share_factor(expected_other_winners: float) -> float:
@@ -178,7 +181,7 @@ def estimate_value(
     lower_values = [_lower_rank_ev(draw, probabilities) for draw in reference]
     lower_ev = float(fmean(lower_values))
     code_pool = _mean_code_pool(reference)
-    predictive_reference, payout_window, payout_validation_coverage = (
+    predictive_reference, payout_window, payout_validation_coverage, tail_probability = (
         _select_predictive_reference(reference, probabilities)
     )
     predictive_lower_values = [
@@ -271,14 +274,16 @@ def estimate_value(
         return point, values
 
     bootstrap_values = value_distribution(jackpot)[1]
-    ci_low = _quantile(bootstrap_values, 0.025)
-    ci_high = _quantile(bootstrap_values, 0.975)
+    ci_low = _quantile(bootstrap_values, tail_probability)
+    ci_high = _quantile(bootstrap_values, 1 - tail_probability)
     fair_jackpot = _solve_threshold(
         lambda candidate: value_distribution(candidate)[0], price, jackpot
     )
     assert fair_jackpot is not None
     conservative_jackpot = _solve_threshold(
-        lambda candidate: _quantile(value_distribution(candidate)[1], 0.025),
+        lambda candidate: _quantile(
+            value_distribution(candidate)[1], tail_probability
+        ),
         price,
         fair_jackpot,
     )
@@ -310,7 +315,9 @@ def estimate_value(
         lower_rank_ev=lower_ev,
         lower_rank_ev_method="mean_of_draw_level_expected_values",
         predictive_payout_window=payout_window,
+        predictive_tail_probability=tail_probability,
         payout_validation_coverage=payout_validation_coverage,
+        prediction_interval_target=0.95,
         code_ev=code_ev,
         estimated_ev=estimated_ev,
         estimated_roi=estimated_ev / price,
@@ -338,6 +345,7 @@ def estimate_value(
             "Les residus de participation sont empiriques mais globaux, sans calibration locale.",
             "Les seuils reevaluent la participation mais deviennent des extrapolations au-dela "
             "du jackpot maximal observe.",
-            "Un point estime positif ne suffit pas: la decision utilise la borne basse a 95%.",
+            "Un point positif ne suffit pas: la decision utilise la borne basse calibree vers "
+            "95% de couverture historique.",
         ),
     )

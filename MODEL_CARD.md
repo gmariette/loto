@@ -26,8 +26,9 @@ dix classes supplementaire.
 - Qualification uniquement si l'intervalle du delta Brier est entierement meilleur que zero.
 - Participation inferee par le rang 9 et comparee a une mediane segmentee sur des folds futurs.
 - Biais de retransformation mesure en niveau et facteur de smearing estime sans donnees futures.
-- Backtest de valeur bloque comparant MAE/RMSE, couverture et decisions a une reference naive.
+- Backtest de valeur walk-forward comparant MAE/RMSE, couverture et decisions a une reference naive.
 - Inference du moteur de valeur par blocs contigus de 12 tirages pour conserver la dependance locale.
+- Reentrainement toutes les 52 dates et calibration interne de l'horizon et des queues predictives.
 
 ## Limites
 

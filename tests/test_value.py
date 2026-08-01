@@ -57,7 +57,9 @@ class ValueTests(unittest.TestCase):
             "temporally_selected_payout_and_empirical_residual_bootstrap",
         )
         self.assertGreater(result.predictive_payout_window, 0)
+        self.assertIn(result.predictive_tail_probability, (0.01, 0.025, 0.05))
         self.assertGreaterEqual(result.payout_validation_coverage, 0)
+        self.assertEqual(result.prediction_interval_target, 0.95)
 
     def test_lower_rank_ev_averages_complete_draw_values(self) -> None:
         draws = []

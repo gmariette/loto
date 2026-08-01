@@ -149,9 +149,10 @@ pool total du rang 1, reconstruit depuis le gain unitaire lorsqu'il y a plusieur
 
 Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool moyen des codes au
 nombre de grilles. Les petits rangs sont agreges comme moyenne des esperances completes par tirage,
-ce qui evite le biais d'une mediane calculee separement pour chaque rang. Un bootstrap predictif
-echantillonne un prochain bareme historique et une erreur multiplicative empirique issue des folds
-passes. Les seuils central et
+ce qui evite le biais d'une mediane calculee separement pour chaque rang. Une validation passee
+choisit conjointement l'horizon de baremes et une probabilite de queue parmi 1 %, 2,5 % et 5 % pour
+viser 95 % de couverture empirique. Le bootstrap echantillonne ensuite un prochain bareme et une
+erreur multiplicative empirique issue des folds passes. Les seuils central et
 conservateur reajustent le volume pour chaque jackpot candidat et signalent un depassement du
 support d'apprentissage. La decision reste `no_bet` tant que sa borne basse ne depasse pas le prix.
 La popularite reelle d'une combinaison reste inconnue et se teste seulement par scenario.
@@ -159,9 +160,9 @@ La popularite reelle d'une combinaison reste inconnue et se teste seulement par 
 ## 10. Backtest de valeur
 
 Une estimation monetaire datee exclut tous les tirages egaux ou posterieurs a sa cible. Le backtest
-decoupe ensuite les dates futures en folds bloques. Au debut de chaque fold, il reajuste le modele
-de participation, choisit une fenetre predictive de baremes sur une validation interne, puis gele
-ces choix pour toute la periode test.
+decoupe ensuite les dates futures en folds externes et reentraine le modele toutes les 52 dates.
+Chaque ajustement de participation, d'horizon et de queue predictive utilise uniquement les donnees
+anterieures a la nouvelle periode walk-forward.
 
 La cible n'est pas le gain aleatoire d'une grille particuliere. Elle reconstruit l'esperance du
 bareme futur avec les probabilites exactes, le volume deduit du rang 9, les codes publies et un

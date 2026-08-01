@@ -199,6 +199,7 @@ def command_value_backtest(args: argparse.Namespace) -> None:
             simulations=args.simulations,
             seed=args.seed,
             block_size=args.block_size,
+            refit_interval=args.refit_interval,
         ).to_dict()
     )
 
@@ -350,6 +351,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=12,
         help="Longueur des blocs temporels pour l'inference statistique",
+    )
+    value_backtest.add_argument(
+        "--refit-interval",
+        type=int,
+        default=52,
+        help="Nombre de dates entre deux reentrainements walk-forward",
     )
     value_backtest.set_defaults(handler=command_value_backtest)
 
