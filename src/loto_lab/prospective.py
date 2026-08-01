@@ -15,6 +15,7 @@ import numpy as np
 
 from . import __version__
 from .domain import Draw, PrizeResult
+from .model_identity import validate_model_specification
 from .probability import rank_probabilities, total_outcomes
 from .value import ValueReport, _lower_rank_ev, _poisson_share_factor
 from .value_backtest import _draw_jackpot, _draw_ticket_count, _moving_block_means
@@ -23,9 +24,9 @@ GENESIS_HASH = "0" * 64
 PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
 LOTO_RECORDING_CUTOFF = time(20, 15)
 EVIDENCE_FORMAT = "loto-lab.prospective-ledger"
-EVIDENCE_SCHEMA_VERSION = 3
-SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2, 3)
-CURRENT_LEDGER_SCHEMA_VERSION = 3
+EVIDENCE_SCHEMA_VERSION = 4
+SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2, 3, 4)
+CURRENT_LEDGER_SCHEMA_VERSION = 4
 PROSPECTIVE_QUALIFICATION_SCORES = 100
 PROSPECTIVE_BLOCK_SIZE = 12
 PROSPECTIVE_INFERENCE_SIMULATIONS = 2_000
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS value_forecasts (
     id INTEGER PRIMARY KEY,
     created_at TEXT NOT NULL,
     model_version TEXT NOT NULL,
+    evaluation_cohort TEXT,
     game TEXT NOT NULL,
     target_date TEXT NOT NULL,
     training_last_date TEXT NOT NULL,
@@ -126,6 +128,12 @@ def _connect(path: str | Path) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(LEDGER_SCHEMA)
+    forecast_columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(value_forecasts)").fetchall()
+    }
+    if "evaluation_cohort" not in forecast_columns:
+        connection.execute("ALTER TABLE value_forecasts ADD COLUMN evaluation_cohort TEXT")
     score_columns = {
         str(row["name"])
         for row in connection.execute("PRAGMA table_info(value_scores)").fetchall()
@@ -243,6 +251,7 @@ def record_value_forecast(
 ) -> dict[str, object]:
     _validate_official_source(provenance.get("jackpot_source"))
     _validate_data_provenance(provenance.get("data"))
+    evaluation_cohort = validate_model_specification(provenance.get("model_specification"))
     if report.target_date is None:
         raise ValueError("Une prevision prospective exige une date cible")
     if report.target_date <= report.training_last_date:
@@ -251,7 +260,9 @@ def record_value_forecast(
     if not _recording_is_open(report.target_date, current_time):
         raise ValueError("Une prevision prospective ne peut pas etre retroactive")
     created_at = current_time.astimezone(UTC).isoformat()
-    report_json = _canonical_json({"report": report.to_dict(), "provenance": provenance})
+    payload = {"report": report.to_dict(), "provenance": provenance}
+    _validate_forecast_model_identity(model_version, evaluation_cohort, payload)
+    report_json = _canonical_json(payload)
     connection = _connect(ledger)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -278,14 +289,16 @@ def record_value_forecast(
             cursor = connection.execute(
                 """
                 INSERT INTO value_forecasts(
-                    created_at, model_version, game, target_date, training_last_date,
+                    created_at, model_version, evaluation_cohort, game, target_date,
+                    training_last_date,
                     jackpot, estimated_ev, ev_ci_low, ev_ci_high, ticket_price, decision,
                     report_json, previous_hash, record_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created_at,
                     model_version,
+                    evaluation_cohort,
                     report.game,
                     report.target_date.isoformat(),
                     report.training_last_date.isoformat(),
@@ -312,6 +325,7 @@ def record_value_forecast(
             "target_date": report.target_date.isoformat(),
             "training_last_date": report.training_last_date.isoformat(),
             "model_version": model_version,
+            "evaluation_cohort": evaluation_cohort,
             "decision": report.decision,
             "estimated_ev": report.estimated_ev,
             "naive_ev": report.naive_ev,
@@ -429,6 +443,42 @@ def _model_version_at_least(
 
 def _uses_hashed_provenance(model_version: object) -> bool:
     return _model_version_at_least(model_version, (0, 9))
+
+
+def _uses_model_specification(model_version: object) -> bool:
+    return _model_version_at_least(model_version, (0, 12))
+
+
+def _validate_forecast_model_identity(
+    model_version: object,
+    evaluation_cohort: object,
+    payload: object,
+) -> None:
+    required = _uses_model_specification(model_version)
+    if evaluation_cohort is None and not required:
+        return
+    if not isinstance(evaluation_cohort, str):
+        raise ValueError("Cohorte scientifique absente")
+    if not isinstance(payload, dict):
+        raise ValueError("Charge utile de prevision invalide")
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError("Provenance de prevision invalide")
+    specification_hash = validate_model_specification(
+        provenance.get("model_specification")
+    )
+    if specification_hash != evaluation_cohort:
+        raise ValueError("La cohorte scientifique ne correspond pas au modele")
+    specification = provenance["model_specification"]
+    assert isinstance(specification, dict)
+    parameters = specification["parameters"]
+    assert isinstance(parameters, dict)
+    report = payload.get("report")
+    if not isinstance(report, dict) or parameters.get("game") != report.get("game"):
+        raise ValueError("Le jeu ne correspond pas a la specification du modele")
+    for key in ("bootstrap_simulations", "seed"):
+        if parameters.get(key) != provenance.get(key):
+            raise ValueError(f"Le parametre {key} ne correspond pas au modele")
 
 
 def _observed_schedule_ev(draw: Draw) -> float | None:
@@ -657,6 +707,14 @@ def verify_ledger(ledger: str | Path) -> dict[str, object]:
             )
             if str(row["previous_hash"]) != previous_hash or str(row["record_hash"]) != expected:
                 errors.append(f"forecast:{row['id']}")
+            try:
+                _validate_forecast_model_identity(
+                    row["model_version"],
+                    row["evaluation_cohort"],
+                    json.loads(str(row["report_json"])),
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                errors.append(f"forecast:{row['id']}:model_identity")
             previous_hash = str(row["record_hash"])
             forecast_hashes[int(row["id"])] = str(row["record_hash"])
         forecast_head = previous_hash
@@ -705,9 +763,17 @@ def forecast_state(
         connection = sqlite3.connect(f"{target.resolve().as_uri()}?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
     try:
+        forecast_columns = {
+            str(item["name"])
+            for item in connection.execute("PRAGMA table_info(value_forecasts)").fetchall()
+        }
+        cohort_expression = (
+            "f.evaluation_cohort" if "evaluation_cohort" in forecast_columns else "NULL"
+        )
         row = connection.execute(
-            """
+            f"""
             SELECT f.id AS forecast_id, f.record_hash AS forecast_hash,
+                   {cohort_expression} AS evaluation_cohort,
                    s.id AS score_id, s.record_hash AS score_hash
             FROM value_forecasts f
             LEFT JOIN value_scores s ON s.forecast_id = f.id
@@ -721,6 +787,11 @@ def forecast_state(
             "state": "scored" if row["score_id"] is not None else "pending",
             "forecast_id": int(row["forecast_id"]),
             "forecast_hash": str(row["forecast_hash"]),
+            "evaluation_cohort": (
+                str(row["evaluation_cohort"])
+                if row["evaluation_cohort"] is not None
+                else None
+            ),
             "score_id": int(row["score_id"]) if row["score_id"] is not None else None,
             "score_hash": str(row["score_hash"]) if row["score_hash"] else None,
         }
@@ -729,13 +800,20 @@ def forecast_state(
 
 
 def _benchmark_cohort_summary(
-    model_version: str, rows: list[Mapping[str, object]]
+    evaluation_cohort: str, rows: list[Mapping[str, object]]
 ) -> dict[str, object]:
     model_mae = fmean(float(row["absolute_error"]) for row in rows)
     naive_mae = fmean(float(row["naive_absolute_error"]) for row in rows)
     mean_delta = fmean(float(row["absolute_error_delta"]) for row in rows)
     summary: dict[str, object] = {
-        "model_version": model_version,
+        "evaluation_cohort": evaluation_cohort,
+        "model_versions": sorted(
+            {
+                str(row["model_version"])
+                for row in rows
+                if "model_version" in row.keys()
+            }
+        ),
         "observations": len(rows),
         "qualification_observations": PROSPECTIVE_QUALIFICATION_SCORES,
         "remaining_before_qualification": max(
@@ -841,7 +919,7 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
             """
             SELECT s.error, s.absolute_error, s.covered, s.false_positive,
                    s.false_negative, s.naive_absolute_error, s.absolute_error_delta,
-                   s.metrics_version, f.model_version
+                   s.metrics_version, f.model_version, f.evaluation_cohort
             FROM value_scores s
             JOIN value_forecasts f ON f.id = s.forecast_id
             ORDER BY s.id
@@ -850,10 +928,15 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
         benchmark_rows = [row for row in scores if int(row["metrics_version"]) == 2]
         cohorts: dict[str, list[sqlite3.Row]] = {}
         for row in benchmark_rows:
-            cohorts.setdefault(str(row["model_version"]), []).append(row)
+            cohort = (
+                str(row["evaluation_cohort"])
+                if row["evaluation_cohort"] is not None
+                else f"legacy:model-version:{row['model_version']}"
+            )
+            cohorts.setdefault(cohort, []).append(row)
         cohort_summaries = [
-            _benchmark_cohort_summary(model_version, rows)
-            for model_version, rows in cohorts.items()
+            _benchmark_cohort_summary(evaluation_cohort, rows)
+            for evaluation_cohort, rows in cohorts.items()
         ]
         verification = verify_ledger(ledger)
         return {
@@ -889,7 +972,7 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
                 else None
             ),
             "qualification_protocol": (
-                "Verdict fige sur les 100 premiers scores comparables de chaque version, "
+                "Verdict fige sur les 100 premiers scores de chaque empreinte scientifique, "
                 "avec bootstrap et permutation par blocs de 12."
             ),
             "qualification_cohorts": cohort_summaries,
@@ -914,6 +997,11 @@ def export_ledger_evidence(ledger: str | Path) -> dict[str, object]:
                     "id": int(row["id"]),
                     "created_at": str(row["created_at"]),
                     "model_version": str(row["model_version"]),
+                    "evaluation_cohort": (
+                        str(row["evaluation_cohort"])
+                        if row["evaluation_cohort"] is not None
+                        else None
+                    ),
                     "game": str(row["game"]),
                     "target_date": str(row["target_date"]),
                     "training_last_date": str(row["training_last_date"]),
@@ -1078,6 +1166,14 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                         _validate_data_provenance(provenance.get("data"))
                     except ValueError:
                         errors.append(f"{label}:data_provenance")
+            try:
+                _validate_forecast_model_identity(
+                    item["model_version"],
+                    item.get("evaluation_cohort"),
+                    payload,
+                )
+            except ValueError:
+                errors.append(f"{label}:model_identity")
             if _model_version_at_least(item["model_version"], (0, 10)):
                 if not isinstance(report, dict) or report.get("naive_ev") is None:
                     errors.append(f"{label}:naive_ev")

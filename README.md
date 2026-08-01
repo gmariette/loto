@@ -212,10 +212,14 @@ metrique depuis le bareme sans acceder a SQLite. Un score est refuse avant 20 h 
 le jour cible. La source du resultat doit etre une URL HTTPS du domaine FDJ et fait partie du hash
 du score. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
 
-`ledger-info` regroupe les scores comparables par `model_version`. Aucun verdict n'est produit avant
-100 scores pour une version. A ce seuil, bootstrap et permutation par blocs de 12 comparent les
-erreurs absolues au benchmark et controlent la couverture de 95 %. Le verdict est ensuite fige sur
-ces 100 observations; les resultats suivants alimentent uniquement les champs `monitoring_*`.
+`ledger-info` regroupe les scores comparables par `evaluation_cohort`, l'empreinte SHA-256 de la
+specification scientifique publiee avant tirage. Elle couvre les sources du moteur de valeur, ses
+parametres effectifs, Python, NumPy et scikit-learn. Une mise a jour de documentation ou du cycle
+operationnel ne remet donc plus le compteur a zero; une modification scientifique ouvre
+automatiquement une nouvelle cohorte. Aucun verdict n'est produit avant 100 scores par empreinte.
+A ce seuil, bootstrap et permutation par blocs de 12 comparent les erreurs absolues au benchmark et
+controlent la couverture de 95 %. Le verdict est ensuite fige sur ces 100 observations; les
+resultats suivants alimentent uniquement les champs `monitoring_*`.
 
 ### Cycle operationnel
 

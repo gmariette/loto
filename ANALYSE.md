@@ -216,12 +216,15 @@ plus simple peut avoir la meme erreur ou faire mieux. La version 0.10.0 fige don
 rapport pre-tirage. Au scoring, elle calcule l'erreur absolue de chaque methode et le delta
 `|erreur modele| - |erreur naive|`; un delta negatif favorise le modele complet.
 
-Les scores sont regroupes par version pour ne pas melanger des algorithmes differents. La
-qualification attend exactement 100 scores comparables, puis utilise un bootstrap en blocs et une
-permutation de signes par blocs de 12. Elle exige un intervalle du delta entierement negatif, une
-p-value inferieure a 5 % et une couverture compatible avec 95 %. Cette evaluation est figee sur les
-100 premiers scores. Les suivants mettent a jour la surveillance mais pas le verdict, ce qui evite
-un test sequentiel repete jusqu'a un resultat favorable.
+Les scores sont regroupes par identite scientifique pour ne pas melanger des algorithmes differents.
+Depuis la version 0.12.0, cette identite n'est plus la version du paquet: c'est le hash canonique des
+sources du moteur de valeur, de ses parametres et de son environnement numerique. Une release
+purement operationnelle conserve ainsi la cohorte; toute modification susceptible de changer le
+calcul en cree une autre. La qualification attend exactement 100 scores comparables, puis utilise
+un bootstrap en blocs et une permutation de signes par blocs de 12. Elle exige un intervalle du
+delta entierement negatif, une p-value inferieure a 5 % et une couverture compatible avec 95 %.
+Cette evaluation est figee sur les 100 premiers scores. Les suivants mettent a jour la surveillance
+mais pas le verdict, ce qui evite un test sequentiel repete jusqu'a un resultat favorable.
 
 ## 14. Discipline operationnelle
 
@@ -236,3 +239,18 @@ de preuve et un journal JSONL chaine trace chaque passage. Une interruption entr
 cree pas une seconde prevision: le prochain passage observe l'etat du registre et reconstruit
 l'export. Le journal rend aussi visibles les passages `waiting_result`, `missed_deadline` et
 `already_scored`, utiles pour auditer les echeances manquantes.
+
+## 15. Identite scientifique reproductible
+
+La version applicative reste necessaire pour retrouver le logiciel execute, mais elle n'est pas une
+bonne unite statistique: corriger une commande ou une documentation ne change pas le modele. La
+version 0.12.0 enregistre donc `evaluation_cohort` avec chaque nouvelle prevision. Cette valeur est
+le SHA-256 d'un manifeste canonique contenant les hashes de `domain.py`, `participation.py`,
+`probability.py` et `value.py`, les parametres de calcul, ainsi que les versions de Python, NumPy et
+scikit-learn.
+
+Le manifeste complet est inclus dans le payload deja protege par la chaine de previsions. Le
+verificateur recalcule son hash et controle sa coherence avec le jeu, la graine et le nombre de
+simulations annonces. La migration SQLite ajoute seulement une colonne nullable: les anciennes
+preuves gardent leurs hashes et sont rangees sous `legacy:model-version:*` lorsqu'elles disposent
+d'un score comparable.

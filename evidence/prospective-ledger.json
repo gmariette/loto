@@ -1,12 +1,13 @@
 {
   "format": "loto-lab.prospective-ledger",
-  "schema_version": 3,
-  "exported_at": "2026-08-01T13:34:04.923154+00:00",
+  "schema_version": 4,
+  "exported_at": "2026-08-01T14:21:22.737244+00:00",
   "forecasts": [
     {
       "id": 1,
       "created_at": "2026-08-01T12:56:01.224781+00:00",
       "model_version": "0.7.0",
+      "evaluation_cohort": null,
       "game": "loto",
       "target_date": "2026-08-01",
       "training_last_date": "2026-07-29",
@@ -96,7 +97,7 @@
     "benchmark_model_mae": null,
     "naive_mae": null,
     "mae_delta": null,
-    "qualification_protocol": "Verdict fige sur les 100 premiers scores comparables de chaque version, avec bootstrap et permutation par blocs de 12.",
+    "qualification_protocol": "Verdict fige sur les 100 premiers scores de chaque empreinte scientifique, avec bootstrap et permutation par blocs de 12.",
     "qualification_cohorts": [],
     "interpretation": "Publier forecast_head_hash avant le tirage, puis score_head_hash apres scoring."
   }

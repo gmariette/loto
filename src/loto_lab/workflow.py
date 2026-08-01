@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .data import load_draws_many
 from .domain import Draw
+from .model_identity import build_model_specification
 from .prospective import (
     GENESIS_HASH,
     _canonical_json,
@@ -250,6 +251,11 @@ def _report_for_manifest(
         "bootstrap_simulations": manifest.simulations,
         "seed": manifest.seed,
         "manifest_hash": manifest.manifest_hash,
+        "model_specification": build_model_specification(
+            game=manifest.game,
+            bootstrap_simulations=manifest.simulations,
+            seed=manifest.seed,
+        ),
     }
     return report, provenance
 

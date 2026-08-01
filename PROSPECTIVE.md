@@ -38,3 +38,8 @@ eligibles au protocole de qualification sur 100 observations.
 Depuis la version 0.11, les prochaines echeances peuvent etre traitees par `prospective-run` depuis
 un manifeste. Le cycle est idempotent, remplace atomiquement ce snapshot et chaine chaque passage
 dans `data/prospective-operations.jsonl`. Cette automatisation ne modifie pas la premiere preuve.
+
+Depuis la version 0.12, chaque nouvelle prevision publie aussi son `evaluation_cohort`: le hash du
+code scientifique, des parametres et des dependances du moteur de valeur. La prevision v0.7 conserve
+une valeur `null`; lui attribuer cette information apres coup creerait une fausse provenance. Si son
+score devient comparable, le registre l'isolera dans une cohorte historique liee a sa version.

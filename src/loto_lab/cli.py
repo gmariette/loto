@@ -17,6 +17,7 @@ from .data import (
 from .database import build_database, database_info
 from .domain import DEFAULT_RULES, LotteryRules
 from .ml import nested_ml_backtest, predict_next_draw
+from .model_identity import build_model_specification
 from .models import SmoothedFrequencyPredictor, standard_backtests
 from .participation import participation_backtest
 from .probability import (
@@ -201,6 +202,11 @@ def command_value_record(args: argparse.Namespace) -> None:
         "jackpot_source": args.jackpot_source,
         "bootstrap_simulations": args.simulations,
         "seed": args.seed,
+        "model_specification": build_model_specification(
+            game=args.game,
+            bootstrap_simulations=args.simulations,
+            seed=args.seed,
+        ),
     }
     payload = {
         "record": record_value_forecast(

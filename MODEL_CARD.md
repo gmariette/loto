@@ -32,7 +32,8 @@ dix classes supplementaire.
 - Registre prospectif append-only, chaine SHA-256 et scoring seulement apres publication du bareme.
 - Bundle JSON autonome: verification des chaines et recalcul des metriques depuis chaque bareme.
 - Empreintes SHA-256 des fichiers et du snapshot logique; source FDJ incluse dans chaque score v2.
-- Benchmark naif fige avant tirage et qualification par version sur un cohort fixe de 100 scores.
+- Benchmark naif fige avant tirage et qualification par empreinte sur une cohorte fixe de 100 scores.
+- Identite scientifique SHA-256 du code, des parametres et des dependances du moteur de valeur.
 - Cycle idempotent pilote par manifeste, export atomique et journal d'execution chaine.
 
 ## Limites
@@ -53,6 +54,8 @@ dix classes supplementaire.
 - Un hash de fichier prouve l'identite d'une entree, pas sa qualite ni son exhaustivite.
 - Cent scores correspondent a un protocole pre-enregistre, pas a une garantie de stabilite future;
   les observations ulterieures sont publiees separement en surveillance.
+- L'empreinte separe les changements declares; elle ne prouve pas a elle seule que l'environnement
+  d'execution n'a pas ete falsifie.
 - L'automatisation evite les doublons mais ne peut pas inventer un jackpot ou une source officielle;
   un manifeste incorrect reste refuse ou produit une entree incorrecte mais tracable.
 - Le journal d'execution reste une preuve locale tant que sa tete n'est pas publiee exterieurement.

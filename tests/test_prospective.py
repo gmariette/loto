@@ -10,6 +10,7 @@ from pathlib import Path
 from test_participation import participation_draws
 
 from loto_lab.domain import Draw
+from loto_lab.model_identity import build_model_specification
 from loto_lab.prospective import (
     PARIS_TIMEZONE,
     _benchmark_cohort_summary,
@@ -46,6 +47,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.forecast_provenance = {
             "jackpot_source": "https://www.fdj.fr/jeux-de-tirage/loto/resultats",
             "data": self.data_provenance,
+            "bootstrap_simulations": 100,
+            "seed": 3,
+            "model_specification": build_model_specification(
+                game="loto", bootstrap_simulations=100, seed=3
+            ),
         }
         self.score_provenance = {
             "result_source": "https://www.fdj.fr/jeux-de-tirage/loto/resultats",
@@ -162,6 +168,12 @@ class ProspectiveLedgerTests(unittest.TestCase):
         tampered_forecast["forecasts"][0]["jackpot"] = 1
         self.assertFalse(verify_evidence(tampered_forecast)["valid"])
 
+        tampered_cohort = copy.deepcopy(evidence)
+        tampered_cohort["forecasts"][0]["evaluation_cohort"] = "0" * 64
+        identity_verification = verify_evidence(tampered_cohort)
+        self.assertFalse(identity_verification["valid"])
+        self.assertIn("forecast:1:model_identity", identity_verification["errors"])
+
         tampered_metrics = copy.deepcopy(evidence)
         score = tampered_metrics["scores"][0]
         score["observed_schedule_ev"] += 1
@@ -223,12 +235,24 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(provenance["draws_snapshot"]["count"], len(self.draws))
         self.assertEqual(len(provenance["draws_snapshot"]["sha256"]), 64)
 
+    def test_forecast_rejects_parameters_inconsistent_with_model_identity(self) -> None:
+        inconsistent = copy.deepcopy(self.forecast_provenance)
+        inconsistent["seed"] = 4
+        with self.assertRaisesRegex(ValueError, "seed"):
+            record_value_forecast(
+                self.ledger, self.report, provenance=inconsistent
+            )
+
     def test_v1_ledger_is_migrated_without_records_being_rewritten(self) -> None:
         record = record_value_forecast(
-            self.ledger, self.report, provenance=self.forecast_provenance
+            self.ledger,
+            self.report,
+            model_version="0.11.0",
+            provenance=self.forecast_provenance,
         )
         connection = sqlite3.connect(self.ledger)
         try:
+            connection.execute("ALTER TABLE value_forecasts DROP COLUMN evaluation_cohort")
             connection.execute("ALTER TABLE value_scores DROP COLUMN score_provenance_json")
             connection.execute("ALTER TABLE value_scores DROP COLUMN hash_version")
             connection.execute("ALTER TABLE value_scores DROP COLUMN metrics_version")
@@ -249,6 +273,12 @@ class ProspectiveLedgerTests(unittest.TestCase):
             columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(value_scores)")
             }
+            forecast_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(value_forecasts)")
+            }
+            evaluation_cohort = connection.execute(
+                "SELECT evaluation_cohort FROM value_forecasts WHERE id = 1"
+            ).fetchone()[0]
             schema_version = connection.execute(
                 "SELECT value FROM ledger_metadata WHERE key = 'schema_version'"
             ).fetchone()[0]
@@ -258,7 +288,9 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertIn("hash_version", columns)
         self.assertIn("metrics_version", columns)
         self.assertIn("absolute_error_delta", columns)
-        self.assertEqual(schema_version, "3")
+        self.assertIn("evaluation_cohort", forecast_columns)
+        self.assertIsNone(evaluation_cohort)
+        self.assertEqual(schema_version, "4")
         self.assertEqual(verify_ledger(self.ledger)["forecast_head_hash"], record["record_hash"])
 
     def test_v2_score_hash_survives_v3_migration(self) -> None:
@@ -378,6 +410,54 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(frozen["evaluation_observations"], 100)
         self.assertLess(frozen["evaluation_mae_delta"], 0)
         self.assertGreater(frozen["monitoring_mae_delta"], 0)
+
+    def test_same_scientific_model_spans_software_versions(self) -> None:
+        second_target = self.target_date + timedelta(days=1)
+        second_report = replace(self.report, target_date=second_target)
+        first = record_value_forecast(
+            self.ledger,
+            self.report,
+            model_version="0.12.0",
+            provenance=self.forecast_provenance,
+        )
+        second = record_value_forecast(
+            self.ledger,
+            second_report,
+            model_version="0.13.0",
+            provenance=self.forecast_provenance,
+        )
+        self.assertEqual(first["evaluation_cohort"], second["evaluation_cohort"])
+
+        source_draw = self.draws[-1]
+        target_draws = [
+            Draw(
+                source_draw.main,
+                source_draw.chance,
+                target,
+                source_draw.game,
+                source_draw.prizes,
+                10,
+                20_000,
+            )
+            for target in (self.target_date, second_target)
+        ]
+        scoring_time = datetime(
+            second_target.year,
+            second_target.month,
+            second_target.day,
+            21,
+            tzinfo=PARIS_TIMEZONE,
+        )
+        score_pending_forecasts(
+            self.ledger,
+            target_draws,
+            provenance=self.score_provenance,
+            current_time=scoring_time,
+        )
+        cohorts = ledger_info(self.ledger)["qualification_cohorts"]
+        self.assertEqual(len(cohorts), 1)
+        self.assertEqual(cohorts[0]["model_versions"], ["0.12.0", "0.13.0"])
+        self.assertEqual(cohorts[0]["observations"], 2)
 
     def test_retroactive_forecast_is_rejected(self) -> None:
         retroactive = replace(self.report, target_date=date.today() - timedelta(days=1))

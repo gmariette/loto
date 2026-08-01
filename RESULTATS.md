@@ -152,10 +152,11 @@ provenance qu'elle n'avait pas au moment de son ancrage.
 La version 0.10.0 ajoute a chaque nouvelle prevision `naive_ev`, calculee exactement comme la
 reference du backtest: petits rangs moyens plus valeur faciale du jackpot, sans codes, partage ni
 modele de participation. Apres tirage, le score chaine les erreurs absolues du modele et de cette
-reference ainsi que leur delta. Les cohortes sont separees par version et aucune qualification
-prospective n'est possible avant 100 observations comparables. Le verdict utilise uniquement les
-100 premieres, avec bootstrap et permutation par blocs de 12; les observations suivantes restent
-visibles en surveillance mais ne permettent pas de refaire le test jusqu'a obtenir un succes.
+reference ainsi que leur delta. Dans ce protocole initial, les cohortes etaient separees par version
+et aucune qualification prospective n'etait possible avant 100 observations comparables. Le verdict
+utilise uniquement les 100 premieres, avec bootstrap et permutation par blocs de 12; les observations
+suivantes restent visibles en surveillance mais ne permettent pas de refaire le test jusqu'a obtenir
+un succes. La version 0.12.0 remplace ensuite cette cle de regroupement trop large.
 
 Le registre contient actuellement zero score et zero observation avec benchmark. La preuve v0.7
 sera exclue de la comparaison au benchmark, car celui-ci n'avait pas ete publie avant son tirage.
@@ -169,6 +170,13 @@ SQLite deja validee.
 Un dry-run du manifeste d'exemple sur les 2 859 tirages reels a choisi `planned_record`, produit un
 rapport complet et laisse registre, preuve et journal inchanges. Le jackpot et la source de cet
 exemple sont des valeurs a remplacer; ce dry-run n'est pas une nouvelle prevision officielle.
+
+La version 0.12.0 remplace le regroupement prospectif par version logicielle par une empreinte
+scientifique reproductible. Le code du moteur de valeur, les parametres et les dependances
+numeriques sont hashes dans chaque nouvelle prevision. Une release sans changement scientifique ne
+perd plus les observations accumulees; un changement de modele ne peut pas reutiliser silencieusement
+la cohorte precedente. La migration du registre et de la preuve vers le schema 4 ne modifie ni le
+payload ni le hash de la prevision v0.7, qui reste une entree historique sans empreinte de modele.
 
 ## Regime historique : 6/49 + complementaire
 
