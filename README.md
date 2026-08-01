@@ -103,7 +103,8 @@ dans les donnees fournies.
 ### Validation ML
 
 Executer les modeles bayesien cumulatif, bayesien temporel, logistique probabiliste, logistique
-optimisee pour le Top-5, Ridge intra-tirage et gradient boosting sur le jeu cible uniquement :
+optimisee pour le Top-5, Ridge intra-tirage, Ridge sur frequences glissantes et gradient boosting
+sur le jeu cible uniquement :
 
 ```bash
 loto-lab ml-backtest data/loto.sqlite \
@@ -120,8 +121,9 @@ pour que leur somme soit exactement 5. Une intensite choisie dans la validation 
 ensuite chaque modele vers l'uniforme; une intensite nulle annule tout signal non reproductible.
 Le `logistic_ranker` choisit au contraire sa regularisation sur les hits internes et conserve le
 classement complet. Le `ridge_ranker` centre les 49 candidats de chaque tirage avant apprentissage :
-seules les differences entre numeros peuvent influencer leur ordre. Chaque famille possede une
-graine stable independante de son ordre dans la liste.
+seules les differences entre numeros peuvent influencer leur ordre. Le `rolling_ridge_ranker`
+elimine les biais fixes et ne conserve que les frequences passees sur 10, 50 et 200 tirages. Chaque
+famille possede une graine stable independante de son ordre dans la liste.
 
 Demander une prediction avec abstention obligatoire :
 
@@ -131,7 +133,7 @@ loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
 
 Le programme ne renvoie des numeros que si le modele se qualifie sur l'une de deux voies : Brier
 significativement meilleur que l'uniforme, ou gain de hits Top-5 dont la borne basse est positive.
-Les p-values des six modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
+Les p-values des sept modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
 existe pour les experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
 Elle publie aussi le jeu, la cible, la derniere date d'apprentissage, le delta Brier, son intervalle,
 les hits Top-5, leurs intervalles et p-values corrigees, ainsi que l'amplitude des probabilites afin

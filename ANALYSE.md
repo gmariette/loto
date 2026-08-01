@@ -128,10 +128,10 @@ variables sont construites avant que tous les tirages de cette date soient ajout
 - jour de semaine, annee et type Loto/Super Loto/Grand Loto ;
 - effet propre a chacun des 49 numeros.
 
-Depuis la version 0.16.0, six familles sont comparees : posterior bayesien cumulatif, posterior
+Depuis la version 0.17.0, sept familles sont comparees : posterior bayesien cumulatif, posterior
 bayesien sur fenetre 10/50/200, regression logistique penalisee pour le Brier, regression logistique
-selectionnee directement sur les hits Top-5, Ridge centre dans chaque tirage et gradient boosting
-avec regularisation L2. Depuis la
+selectionnee directement sur les hits Top-5, Ridge centre dans chaque tirage, Ridge limite aux
+frequences 10/50/200 et gradient boosting avec regularisation L2. Depuis la
 version 0.13.0, l'apprentissage est isole par jeu cible afin qu'un modele Loto ne melange pas les
 tirages Super Loto et Grand Loto. La selection des hyperparametres et du poids de
 retraction vers l'uniforme est effectuee dans une fenetre temporelle interne; seul le fold externe
@@ -142,7 +142,7 @@ La qualification dispose de deux voies. La voie probabiliste exige un delta Brie
 une borne haute bootstrap negative et une p-value de permutation corrigee inferieure a 5 %. La voie
 de classement compare directement les hits du Top-5 a l'esperance uniforme exacte `25/49`; elle
 exige une borne basse positive et une p-value hypergeometrique corrigee inferieure a 5 %. Holm porte
-conjointement sur les six modeles et les deux metriques. Sans cela, l'API renvoie `abstention`.
+conjointement sur les sept modeles et les deux metriques. Sans cela, l'API renvoie `abstention`.
 Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous mauvais en faux
 pronostic.
 
