@@ -217,6 +217,35 @@ du score. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECT
 erreurs absolues au benchmark et controlent la couverture de 95 %. Le verdict est ensuite fige sur
 ces 100 observations; les resultats suivants alimentent uniquement les champs `monitoring_*`.
 
+### Cycle operationnel
+
+Preparer un manifeste depuis [l'exemple](examples/prospective-manifest.example.json), puis verifier
+le plan sans aucune ecriture :
+
+```bash
+loto-lab prospective-run examples/prospective-manifest.example.json --dry-run
+```
+
+Avant le tirage, renseigner date, jackpot et `jackpot_source`, laisser `result_source` a `null`, puis
+passer explicitement `enabled` a `true` et executer sans `--dry-run`. L'exemple desactive refuse toute
+execution reelle. Apres publication du resultat, actualiser les archives et la base, renseigner
+`result_source`, puis relancer exactement la meme commande. Le cycle detecte les etats `missing`,
+`pending` et `scored`; il ne cree jamais deux previsions ni deux scores pour une cible.
+
+L'export du registre utilise un fichier temporaire et un remplacement atomique. Si l'execution est
+interrompue apres la transaction SQLite mais avant l'export, le passage suivant reconstruit la preuve
+sans dupliquer la ligne. Chaque passage reel prolonge aussi un journal JSONL chaine :
+
+```bash
+loto-lab prospective-journal-verify data/prospective-operations.jsonl
+```
+
+Ce journal sert a l'audit operationnel local. Comme toute chaine locale, il ne prouve sa chronologie
+que si sa tete est publiee dans Git ou un autre support externe.
+
+Les chemins relatifs du manifeste sont resolus depuis son propre dossier. Il peut donc etre lance
+depuis cron ou un runner CI sans dependre du repertoire courant.
+
 Generer dix grilles distinctes :
 
 ```bash

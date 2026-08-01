@@ -38,6 +38,11 @@ from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequen
 from .strategy import anti_crowd_score, generate_tickets
 from .value import estimate_value
 from .value_backtest import backtest_value
+from .workflow import (
+    run_prospective_cycle,
+    verify_operation_journal,
+    write_json_atomic,
+)
 
 
 def _print_json(value: object) -> None:
@@ -135,10 +140,7 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
         ),
     }
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-        )
+        write_json_atomic(args.output, payload)
     _print_json(payload)
 
 
@@ -209,11 +211,7 @@ def command_value_record(args: argparse.Namespace) -> None:
         "ledger": ledger_info(args.ledger),
     }
     if args.export:
-        args.export.parent.mkdir(parents=True, exist_ok=True)
-        args.export.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n",
-            encoding="utf-8",
-        )
+        write_json_atomic(args.export, payload)
     _print_json(payload)
 
 
@@ -229,11 +227,7 @@ def command_value_score(args: argparse.Namespace) -> None:
     }
     if args.export:
         evidence = export_ledger_evidence(args.ledger)
-        args.export.parent.mkdir(parents=True, exist_ok=True)
-        args.export.write_text(
-            json.dumps(evidence, ensure_ascii=False, indent=2, default=str) + "\n",
-            encoding="utf-8",
-        )
+        write_json_atomic(args.export, evidence)
         payload["evidence_export"] = str(args.export)
         payload["evidence_verification"] = verify_evidence(evidence)
     _print_json(payload)
@@ -245,11 +239,7 @@ def command_ledger_info(args: argparse.Namespace) -> None:
 
 def command_ledger_export(args: argparse.Namespace) -> None:
     evidence = export_ledger_evidence(args.ledger)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(evidence, ensure_ascii=False, indent=2, default=str) + "\n",
-        encoding="utf-8",
-    )
+    write_json_atomic(args.output, evidence)
     _print_json({"output": str(args.output), **verify_evidence(evidence)})
 
 
@@ -261,6 +251,17 @@ def command_ledger_verify(args: argparse.Namespace) -> None:
     if not isinstance(evidence, dict):
         raise SystemExit("Preuve invalide: la racine JSON doit etre un objet")
     result = verify_evidence(evidence)
+    _print_json(result)
+    if not result["valid"]:
+        raise SystemExit(1)
+
+
+def command_prospective_run(args: argparse.Namespace) -> None:
+    _print_json(run_prospective_cycle(args.manifest, dry_run=args.dry_run))
+
+
+def command_prospective_journal_verify(args: argparse.Namespace) -> None:
+    result = verify_operation_journal(args.journal)
     _print_json(result)
     if not result["valid"]:
         raise SystemExit(1)
@@ -534,6 +535,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ledger_verify.add_argument("evidence", type=Path)
     ledger_verify.set_defaults(handler=command_ledger_verify)
+
+    prospective_run = subparsers.add_parser(
+        "prospective-run",
+        help="Executer idempotemment un manifeste prospectif",
+    )
+    prospective_run.add_argument("manifest", type=Path)
+    prospective_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Valider et calculer le plan sans modifier aucun fichier",
+    )
+    prospective_run.set_defaults(handler=command_prospective_run)
+
+    journal_verify = subparsers.add_parser(
+        "prospective-journal-verify",
+        help="Verifier la chaine du journal d'execution prospectif",
+    )
+    journal_verify.add_argument("journal", type=Path)
+    journal_verify.set_defaults(handler=command_prospective_journal_verify)
 
     generate = subparsers.add_parser("generate", help="Generer des grilles distinctes")
     generate.add_argument("--count", type=int, default=5)

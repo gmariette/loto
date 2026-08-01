@@ -689,6 +689,45 @@ def verify_ledger(ledger: str | Path) -> dict[str, object]:
         connection.close()
 
 
+def forecast_state(
+    ledger: str | Path,
+    game: str,
+    target_date: date,
+    *,
+    migrate: bool = True,
+) -> dict[str, object]:
+    target = Path(ledger)
+    if not target.exists():
+        return {"state": "missing", "forecast_id": None, "forecast_hash": None}
+    if migrate:
+        connection = _connect(target)
+    else:
+        connection = sqlite3.connect(f"{target.resolve().as_uri()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+    try:
+        row = connection.execute(
+            """
+            SELECT f.id AS forecast_id, f.record_hash AS forecast_hash,
+                   s.id AS score_id, s.record_hash AS score_hash
+            FROM value_forecasts f
+            LEFT JOIN value_scores s ON s.forecast_id = f.id
+            WHERE f.game = ? AND f.target_date = ?
+            """,
+            (game, target_date.isoformat()),
+        ).fetchone()
+        if row is None:
+            return {"state": "missing", "forecast_id": None, "forecast_hash": None}
+        return {
+            "state": "scored" if row["score_id"] is not None else "pending",
+            "forecast_id": int(row["forecast_id"]),
+            "forecast_hash": str(row["forecast_hash"]),
+            "score_id": int(row["score_id"]) if row["score_id"] is not None else None,
+            "score_hash": str(row["score_hash"]) if row["score_hash"] else None,
+        }
+    finally:
+        connection.close()
+
+
 def _benchmark_cohort_summary(
     model_version: str, rows: list[Mapping[str, object]]
 ) -> dict[str, object]:

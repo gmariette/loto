@@ -222,3 +222,17 @@ permutation de signes par blocs de 12. Elle exige un intervalle du delta entiere
 p-value inferieure a 5 % et une couverture compatible avec 95 %. Cette evaluation est figee sur les
 100 premiers scores. Les suivants mettent a jour la surveillance mais pas le verdict, ce qui evite
 un test sequentiel repete jusqu'a un resultat favorable.
+
+## 14. Discipline operationnelle
+
+Un protocole prospectif peut encore etre biaise si les previsions difficiles sont oubliees ou si
+seuls certains tirages sont enregistres. La version 0.11.0 decrit chaque echeance dans un manifeste
+strict et fournit une commande idempotente adaptee a une execution planifiee. Le dry-run valide les
+donnees et calcule le rapport sans ecrire; l'execution reelle enregistre avant cloture, attend le
+resultat, puis score apres import sans doublon.
+
+La transaction SQLite protege les lignes scientifiques, le remplacement atomique protege le fichier
+de preuve et un journal JSONL chaine trace chaque passage. Une interruption entre ces etapes ne
+cree pas une seconde prevision: le prochain passage observe l'etat du registre et reconstruit
+l'export. Le journal rend aussi visibles les passages `waiting_result`, `missed_deadline` et
+`already_scored`, utiles pour auditer les echeances manquantes.

@@ -33,6 +33,7 @@ dix classes supplementaire.
 - Bundle JSON autonome: verification des chaines et recalcul des metriques depuis chaque bareme.
 - Empreintes SHA-256 des fichiers et du snapshot logique; source FDJ incluse dans chaque score v2.
 - Benchmark naif fige avant tirage et qualification par version sur un cohort fixe de 100 scores.
+- Cycle idempotent pilote par manifeste, export atomique et journal d'execution chaine.
 
 ## Limites
 
@@ -52,6 +53,9 @@ dix classes supplementaire.
 - Un hash de fichier prouve l'identite d'une entree, pas sa qualite ni son exhaustivite.
 - Cent scores correspondent a un protocole pre-enregistre, pas a une garantie de stabilite future;
   les observations ulterieures sont publiees separement en surveillance.
+- L'automatisation evite les doublons mais ne peut pas inventer un jackpot ou une source officielle;
+  un manifeste incorrect reste refuse ou produit une entree incorrecte mais tracable.
+- Le journal d'execution reste une preuve locale tant que sa tete n'est pas publiee exterieurement.
 - Une seule prevision prospective est actuellement en attente; aucune performance future ne peut
   encore etre estimee.
 

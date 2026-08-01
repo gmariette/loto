@@ -160,6 +160,16 @@ visibles en surveillance mais ne permettent pas de refaire le test jusqu'a obten
 Le registre contient actuellement zero score et zero observation avec benchmark. La preuve v0.7
 sera exclue de la comparaison au benchmark, car celui-ci n'avait pas ete publie avant son tirage.
 
+La version 0.11.0 automatise le cycle necessaire pour atteindre ces 100 observations. Un manifeste
+JSON strict pilote le preflight, l'enregistrement, l'attente du resultat, le scoring et l'export.
+Toutes les operations sont idempotentes et chaque execution reelle prolonge un journal JSONL
+chaine. Les exports sont atomiques et un passage suivant repare un export absent apres une transaction
+SQLite deja validee.
+
+Un dry-run du manifeste d'exemple sur les 2 859 tirages reels a choisi `planned_record`, produit un
+rapport complet et laisse registre, preuve et journal inchanges. Le jackpot et la source de cet
+exemple sont des valeurs a remplacer; ce dry-run n'est pas une nouvelle prevision officielle.
+
 ## Regime historique : 6/49 + complementaire
 
 Echantillon separe : 2 707 tirages du 3 janvier 1996 au 4 octobre 2008, dont 2 664 Loto et

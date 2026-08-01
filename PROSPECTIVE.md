@@ -34,3 +34,7 @@ De meme, la reference `naive_ev` introduite en version 0.10 n'est pas reconstrui
 cette prevision. Son futur score contribuera au biais, a la MAE et a la couverture, mais pas au delta
 comparatif modele-reference. Seules les previsions qui ont publie les deux EV avant tirage sont
 eligibles au protocole de qualification sur 100 observations.
+
+Depuis la version 0.11, les prochaines echeances peuvent etre traitees par `prospective-run` depuis
+un manifeste. Le cycle est idempotent, remplace atomiquement ce snapshot et chaine chaque passage
+dans `data/prospective-operations.jsonl`. Cette automatisation ne modifie pas la premiere preuve.
