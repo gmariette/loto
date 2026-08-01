@@ -85,3 +85,26 @@ alpha, `0,008333`, et reste a zero score sur 100. Tete append-only :
 2 pour conserver la chaine JSON canonique originale et sa representation lisible; le schema 1 reste
 verifiable. Empreinte du bundle :
 `4ddf625a48a934e4cbc2a204e01494c8afdb87dc882ad755fb98f46fa111fb16`.
+
+Apres publication de l'archive FDJ du 1er aout, le tirage officiel `5 6 8 30 37`, Chance `4`, a
+score les deux previsions sans modification retrospective. La v0.16 obtient zero hit principal et
+la v0.17 un hit (`6`); aucune ne trouve le numero Chance. Chaque cohorte reste
+`insufficient_data` avec un score sur 100. Tete de la chaine des scores :
+`c581084c20a25d5af229368b2782b09d2ddd53a07e6d509b8879f01670a5d6cb`. Empreinte du bundle
+score : `289068dcd5388665bbda32a4e3b94728b2c2f93754698429944ddee78567cd10`.
+
+La version 0.18 fige la recherche au 29 juillet avec l'option CLI `--as-of`. Le nouveau
+`hierarchical_ridge_ranker` conserve le score rolling 10/50/200 et utilise le retard normalise
+uniquement pour departager ses ex aequo. Sur les 2 238 tirages externes figes, il atteint `0,53977`
+hit contre `0,51020` sous l'uniforme; l'intervalle brut de l'uplift est
+`[0,00499 ; 0,05771]` et la p-value brute `0,01649`, mais la correction de Holm sur 16 tests donne
+`0,26387`. Il reste donc non qualifie. Les variantes non lineaires, EWMA, multiscales et a fenetre
+d'apprentissage recente ont ete rejetees car elles font moins bien hors echantillon.
+
+La grille sans mise figee pour le 3 aout est `11 20 40 42 44`, Chance `3`, entrainee jusqu'au
+1er aout. Sur ce snapshot actualise et avec sa graine pre-enregistree, le controle historique vaut
+`0,53729` hit et son intervalle recouvre zero; le statut reste `forced_experimental`. La cohorte 3,
+`b4dfd1a591d86ffd34a726ea3ef6a98f066a5a88332b2ddc0f18bbc364bc002a`, dispose d'un budget
+alpha de `0,0041667`. Tete append-only :
+`a2cffc620df43c27749441618ce58207b315f37f6e15ceebbe3456de4fd67c5e`. Empreinte du bundle :
+`563e341f2653094d4387797ec2e6e3122ec2899a210d86bbb39d36373825aa59`.

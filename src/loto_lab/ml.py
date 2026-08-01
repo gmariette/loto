@@ -224,6 +224,9 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
     "rolling_ridge_ranker": tuple(
         {"alpha": alpha} for alpha in (0.1, 1.0, 10.0, 100.0, 1000.0)
     ),
+    "hierarchical_ridge_ranker": tuple(
+        {"alpha": alpha} for alpha in (0.1, 1.0, 10.0, 100.0, 1000.0)
+    ),
     "gradient_boosting": (
         {"learning_rate": 0.03, "max_leaf_nodes": 7, "l2": 1.0},
         {"learning_rate": 0.05, "max_leaf_nodes": 15, "l2": 5.0},
@@ -238,6 +241,7 @@ MODEL_SEED_OFFSETS = {
     "logistic_ranker": 40_000,
     "ridge_ranker": 50_000,
     "rolling_ridge_ranker": 60_000,
+    "hierarchical_ridge_ranker": 70_000,
 }
 
 UNIFORM_BLEND_WEIGHTS = (0.0, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
@@ -249,6 +253,7 @@ DEFAULT_MODELS = (
     "logistic_ranker",
     "ridge_ranker",
     "rolling_ridge_ranker",
+    "hierarchical_ridge_ranker",
 )
 
 
@@ -281,8 +286,12 @@ def _fit_predict(
         frequencies = x_test[:, :, feature_index] + (5 / 49)
         prior = float(parameters["prior_strength"])
         raw = (frequencies * history + prior * (5 / 49)) / (history + prior)
-    elif model_name in ("ridge_ranker", "rolling_ridge_ranker"):
-        if model_name == "rolling_ridge_ranker":
+    elif model_name in (
+        "ridge_ranker",
+        "rolling_ridge_ranker",
+        "hierarchical_ridge_ranker",
+    ):
+        if model_name in ("rolling_ridge_ranker", "hierarchical_ridge_ranker"):
             feature_indices = [
                 FEATURE_NAMES.index(f"frequency_{window}_delta")
                 for window in (10, 50, 200)
@@ -401,6 +410,7 @@ def _select_parameters(
         "logistic_ranker",
         "ridge_ranker",
         "rolling_ridge_ranker",
+        "hierarchical_ridge_ranker",
     )
     best: tuple[tuple[float, float], dict[str, float | int]] | None = None
     for model_parameters in MODEL_PARAMETERS[model_name]:
@@ -422,12 +432,19 @@ def _select_parameters(
                     np.mean(
                         [
                             len(
-                                set(_top5_indices(row, ranking_rng)).intersection(
+                                set(
+                                    _ranking_indices(
+                                        row,
+                                        ranking_rng,
+                                        model_name,
+                                        dataset.x[validation][row_index],
+                                    )
+                                ).intersection(
                                     np.flatnonzero(target)
                                 )
                             )
-                            for row, target in zip(
-                                predicted, dataset.y[validation], strict=True
+                            for row_index, (row, target) in enumerate(
+                                zip(predicted, dataset.y[validation], strict=True)
                             )
                         ]
                     )
@@ -494,6 +511,21 @@ def _top5_indices(probabilities: np.ndarray, rng: np.random.Generator) -> np.nda
     return np.lexsort((tie_breakers, probabilities))[-DEFAULT_RULES.main_drawn :]
 
 
+def _ranking_indices(
+    probabilities: np.ndarray,
+    rng: np.random.Generator,
+    model_name: str,
+    feature_row: np.ndarray,
+) -> np.ndarray:
+    if model_name == "hierarchical_ridge_ranker":
+        tie_breakers = rng.random(len(probabilities))
+        gaps = feature_row[:, FEATURE_NAMES.index("normalized_gap")]
+        return np.lexsort((tie_breakers, gaps, probabilities))[
+            -DEFAULT_RULES.main_drawn :
+        ]
+    return _top5_indices(probabilities, rng)
+
+
 def _backtest_one_model(
     dataset: FeatureDataset,
     model_name: str,
@@ -508,6 +540,7 @@ def _backtest_one_model(
     date_folds = [fold for fold in np.array_split(eligible_dates, outer_folds) if len(fold)]
     predictions: list[np.ndarray] = []
     actuals: list[np.ndarray] = []
+    feature_rows: list[np.ndarray] = []
     selected: list[dict[str, float | int]] = []
 
     for fold_number, test_dates in enumerate(date_folds):
@@ -526,9 +559,11 @@ def _backtest_one_model(
             )
         )
         actuals.append(dataset.y[test_indices])
+        feature_rows.append(dataset.x[test_indices])
 
     predicted = np.concatenate(predictions)
     actual = np.concatenate(actuals)
+    ranking_features = np.concatenate(feature_rows)
     baseline = np.full_like(predicted, 5 / 49)
     scores = _brier_by_draw(predicted, actual)
     baseline_scores = _brier_by_draw(baseline, actual)
@@ -538,11 +573,20 @@ def _backtest_one_model(
     hits = np.asarray(
         [
             len(
-                set(_top5_indices(row, ranking_rng)).intersection(
+                set(
+                    _ranking_indices(
+                        row,
+                        ranking_rng,
+                        model_name,
+                        feature_row,
+                    )
+                ).intersection(
                     np.flatnonzero(target)
                 )
             )
-            for row, target in zip(predicted, actual, strict=True)
+            for row, target, feature_row in zip(
+                predicted, actual, ranking_features, strict=True
+            )
         ],
         dtype=float,
     )
@@ -639,13 +683,22 @@ def nested_ml_backtest(
     seed: int = 0,
     game: str | None = None,
     models: tuple[str, ...] = DEFAULT_MODELS,
+    as_of: date | None = None,
 ) -> list[MLBacktestResult]:
     if outer_folds < 2 or simulations < 100:
         raise ValueError("Il faut au moins 2 folds et 100 simulations")
     unknown = set(models).difference(MODEL_PARAMETERS)
     if unknown:
         raise ValueError(f"Modeles inconnus: {sorted(unknown)}")
-    selected_draws = [draw for draw in draws if game is None or draw.game == game]
+    selected_draws = [
+        draw
+        for draw in draws
+        if (game is None or draw.game == game)
+        and (
+            as_of is None
+            or (draw.draw_date is not None and draw.draw_date <= as_of)
+        )
+    ]
     if not selected_draws:
         raise ValueError(f"Aucun tirage disponible pour {game}")
     dataset = build_feature_dataset(selected_draws, min_history)
@@ -717,7 +770,15 @@ def predict_next_draw(
     else:
         ranking_rng = np.random.default_rng(seed)
         top = tuple(
-            sorted(int(index + 1) for index in _top5_indices(predicted, ranking_rng))
+            sorted(
+                int(index + 1)
+                for index in _ranking_indices(
+                    predicted,
+                    ranking_rng,
+                    champion.model,
+                    target,
+                )
+            )
         )
     return {
         "status": status,
