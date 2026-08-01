@@ -21,7 +21,8 @@ from .prospective import (
 )
 
 NUMBER_EVIDENCE_FORMAT = "loto-lab.number-prospective-ledger"
-NUMBER_EVIDENCE_SCHEMA_VERSION = 1
+NUMBER_EVIDENCE_SCHEMA_VERSION = 2
+SUPPORTED_NUMBER_EVIDENCE_SCHEMA_VERSIONS = (1, 2)
 NUMBER_QUALIFICATION_SCORES = 100
 NUMBER_FAMILY_ALPHA = 0.05
 NUMBER_BOOTSTRAP_SIMULATIONS = 2_000
@@ -83,9 +84,17 @@ END;
 """
 
 
+def _normalize_json_keys(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(key): _normalize_json_keys(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_keys(item) for item in value]
+    return value
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(
-        value,
+        _normalize_json_keys(value),
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
@@ -533,7 +542,9 @@ def export_number_evidence(ledger: str | Path) -> dict[str, object]:
         for row in connection.execute("SELECT * FROM number_forecasts ORDER BY id"):
             value = dict(row)
             value["main"] = json.loads(value.pop("main_json"))
-            value["payload"] = json.loads(value.pop("payload_json"))
+            payload_json = value.pop("payload_json")
+            value["payload"] = json.loads(payload_json)
+            value["payload_canonical_json"] = payload_json
             forecasts.append(value)
         scores = []
         for row in connection.execute("SELECT * FROM number_scores ORDER BY id"):
@@ -558,7 +569,8 @@ def verify_number_evidence(evidence: object) -> dict[str, object]:
         return {"valid": False, "errors": ["evidence:not_object"]}
     if evidence.get("format") != NUMBER_EVIDENCE_FORMAT:
         errors.append("evidence:format")
-    if evidence.get("schema_version") != NUMBER_EVIDENCE_SCHEMA_VERSION:
+    schema_version = evidence.get("schema_version")
+    if schema_version not in SUPPORTED_NUMBER_EVIDENCE_SCHEMA_VERSIONS:
         errors.append("evidence:schema_version")
     forecasts = evidence.get("forecasts")
     scores = evidence.get("scores")
@@ -578,7 +590,16 @@ def verify_number_evidence(evidence: object) -> dict[str, object]:
         try:
             row = dict(forecast)
             row["main_json"] = _canonical_json(row.pop("main"))
-            row["payload_json"] = _canonical_json(row.pop("payload"))
+            payload = row.pop("payload")
+            payload_json = row.pop("payload_canonical_json", None)
+            if payload_json is None:
+                row["payload_json"] = _canonical_json(payload)
+            elif not isinstance(payload_json, str):
+                raise ValueError("Payload canonique invalide")
+            else:
+                if _canonical_json(json.loads(payload_json)) != _canonical_json(payload):
+                    errors.append(f"forecast:{position}:payload_mismatch")
+                row["payload_json"] = payload_json
             if row["previous_hash"] != previous_hash:
                 errors.append(f"forecast:{position}:previous_hash")
             expected_hash = _forecast_hash(row)

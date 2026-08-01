@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import sqlite3
 import tempfile
@@ -10,6 +11,7 @@ from loto_lab.domain import Draw
 from loto_lab.model_identity import build_number_model_specification
 from loto_lab.number_prospective import (
     NUMBER_EVIDENCE_FORMAT,
+    _canonical_json,
     _exact_top5_tail,
     cohort_alpha_budget,
     export_number_evidence,
@@ -113,6 +115,14 @@ class NumberProspectiveTests(unittest.TestCase):
         tampered_summary = copy.deepcopy(evidence)
         tampered_summary["ledger"]["cohorts"][0]["qualification_status"] = "qualified"
         self.assertFalse(verify_number_evidence(tampered_summary)["valid"])
+        tampered_payload = copy.deepcopy(evidence)
+        tampered_payload["forecasts"][0]["payload"]["prediction"]["chance"] = 2
+        self.assertFalse(verify_number_evidence(tampered_payload)["valid"])
+
+        legacy = copy.deepcopy(evidence)
+        legacy["schema_version"] = 1
+        legacy["forecasts"][0].pop("payload_canonical_json")
+        self.assertTrue(verify_number_evidence(legacy)["valid"])
 
         connection = sqlite3.connect(self.ledger)
         try:
@@ -177,6 +187,10 @@ class NumberProspectiveTests(unittest.TestCase):
                 provenance=self.provenance,
                 current_time=datetime(2030, 1, 3, tzinfo=UTC),
             )
+
+    def test_canonical_json_survives_numeric_key_roundtrip(self) -> None:
+        encoded = _canonical_json({6: 0.1, 20: 0.2})
+        self.assertEqual(encoded, _canonical_json(json.loads(encoded)))
 
 
 if __name__ == "__main__":
