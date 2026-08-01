@@ -70,11 +70,34 @@ agreges au niveau tirage par une moyenne, methode adaptee a une esperance, au li
 par rang. Avec
 environ `0,037 EUR` de codes, l'esperance vaut `1,304 EUR` pour `2,20 EUR`, soit un ROI de `59,29 %`.
 
-Le bootstrap predictif echantillonne un prochain bareme complet et l'erreur de participation; son
-IC 95 % `[1,072 ; 1,576]` est volontairement plus large que l'ancien intervalle d'estimation. Le
+Le bootstrap predictif selectionne une fenetre recente de baremes dans une validation temporelle,
+puis echantillonne un prochain bareme complet et l'erreur de participation. Son IC 95 %
+`[1,104 ; 1,655]` est volontairement plus large que l'ancien intervalle d'estimation. Le
 seuil central dynamique vaut `30,281 M EUR`; la borne basse atteint seulement le prix vers
-`36,134 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
+`36,186 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
 et sont marques comme extrapolations. La decision reste `no_bet`.
+
+## Backtest bout en bout de la valeur
+
+La version 0.4.0 impose une coupure stricte avant toute date cible et ajoute `value-backtest`.
+Trois folds bloques evaluent 983 tirages Loto du 20 avril 2020 au 29 juillet 2026. La cible est
+l'esperance du bareme observe, reconstruite avec les petits rangs, les codes et le volume du rang 9.
+
+| Mesure | Modele complet | Reference naive |
+|---|---:|---:|
+| Biais moyen | +0,00445 EUR | -0,00824 EUR |
+| MAE | 0,11165 EUR | 0,11666 EUR |
+| RMSE | 0,13766 EUR | 0,14613 EUR |
+
+La MAE baisse de `4,30 %`. Le delta apparie vaut `-0,00501 EUR`, avec IC 95 %
+`[-0,00774 ; -0,00241]` et p de permutation `0,001`; l'amelioration face a la reference naive est
+qualifiee. Les fenetres de baremes `[50, 250, 50]`, choisies dans le passe de chaque fold, portent
+la couverture predictive a `93,69 %` contre `82,5 %` auparavant. Son IC de Wilson
+`[92,00 % ; 95,05 %]` contient la cible de 95 %, sans prouver une couverture parfaite.
+
+Le moteur n'a emis aucun `eligible` et donc aucun faux positif. Trois baremes observes avaient une
+EV ponctuelle superieure au prix, tous refuses par la borne basse prudente. Ce resultat confirme
+une politique d'abstention conservatrice; il ne demontre pas une strategie de jeu rentable.
 
 ## Regime historique : 6/49 + complementaire
 

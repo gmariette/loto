@@ -92,6 +92,11 @@ class ParticipationForecaster:
     ) -> ParticipationForecast:
         if jackpot <= 0:
             raise ValueError("Le jackpot doit etre positif")
+        last_training_date = max(item.draw_date for item in self.observations)
+        if target_date <= last_training_date:
+            raise ValueError(
+                "La date cible doit etre posterieure aux observations d'apprentissage"
+            )
         target = ParticipationObservation(target_date, game, jackpot, 0, 0)
         observations = list(self.observations)
         if self.model is not None:
@@ -439,5 +444,10 @@ def forecast_participation(
     simulations: int = 2_000,
     seed: int = 0,
 ) -> ParticipationForecast:
-    forecaster = fit_participation_forecaster(draws, min_train, folds, simulations, seed)
+    historical = [
+        draw
+        for draw in draws
+        if draw.draw_date is not None and draw.draw_date < target_date
+    ]
+    forecaster = fit_participation_forecaster(historical, min_train, folds, simulations, seed)
     return forecaster.forecast(jackpot, target_date, game)

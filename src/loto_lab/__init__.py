@@ -3,4 +3,4 @@
 from .domain import DEFAULT_RULES, Draw, LotteryRules, PrizeResult, Ticket
 
 __all__ = ["DEFAULT_RULES", "Draw", "LotteryRules", "PrizeResult", "Ticket"]
-__version__ = "0.3.1"
+__version__ = "0.4.0"

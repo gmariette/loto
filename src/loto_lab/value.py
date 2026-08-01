@@ -17,6 +17,8 @@ TICKET_PRICES = {"loto": 2.20, "super_loto": 3.0, "grand_loto": 5.0}
 @dataclass(frozen=True, slots=True)
 class ValueReport:
     game: str
+    target_date: date | None
+    training_last_date: date
     reference_draws: int
     jackpot: float
     expected_co_winners: float
@@ -31,6 +33,8 @@ class ValueReport:
     participation_extrapolated: bool
     lower_rank_ev: float
     lower_rank_ev_method: str
+    predictive_payout_window: int
+    payout_validation_coverage: float
     code_ev: float
     estimated_ev: float
     estimated_roi: float
@@ -77,6 +81,30 @@ def _mean_code_pool(draws: list[Draw]) -> float:
         and draw.code_payout > 0
     ]
     return float(fmean(pools)) if pools else 0.0
+
+
+def _select_predictive_reference(
+    draws: list[Draw], probabilities: dict[int, float]
+) -> tuple[list[Draw], int, float]:
+    if len(draws) < 20:
+        return draws, len(draws), 1.0
+    cutoff = max(10, int(len(draws) * 0.8))
+    base = draws[:cutoff]
+    validation_values = [_lower_rank_ev(draw, probabilities) for draw in draws[cutoff:]]
+    candidates = sorted({min(window, len(base)) for window in (50, 100, 250, len(base))})
+    best: tuple[tuple[float, float], int, float] | None = None
+    for window in candidates:
+        values = [_lower_rank_ev(draw, probabilities) for draw in base[-window:]]
+        low = _quantile(values, 0.025)
+        high = _quantile(values, 0.975)
+        coverage = sum(low <= value <= high for value in validation_values) / len(
+            validation_values
+        )
+        score = (abs(coverage - 0.95), high - low)
+        if best is None or score < best[0]:
+            best = (score, window, coverage)
+    assert best is not None
+    return draws[-best[1] :], best[1], best[2]
 
 
 def _poisson_share_factor(expected_other_winners: float) -> float:
@@ -129,21 +157,37 @@ def estimate_value(
         raise ValueError("Le facteur de popularite ne peut pas etre negatif")
     if bootstrap_simulations < 100:
         raise ValueError("Il faut au moins 100 simulations bootstrap")
-    reference = _current_prize_draws(draws, game)
+    historical = [
+        draw
+        for draw in draws
+        if draw.draw_date is not None
+        and (target_date is None or draw.draw_date < target_date)
+    ]
+    if not historical:
+        raise ValueError("Aucun tirage strictement anterieur a la date cible")
+    training_last_date = max(
+        draw.draw_date for draw in historical if draw.draw_date is not None
+    )
+    report_target_date = target_date or training_last_date + timedelta(days=2)
+    reference = _current_prize_draws(historical, game)
     if len(reference) < 5:
         raise ValueError(f"Pas assez de tirages recents avec 9 rangs pour {game}")
     probabilities = {item.rank: item.probability for item in rank_probabilities()}
     lower_values = [_lower_rank_ev(draw, probabilities) for draw in reference]
     lower_ev = float(fmean(lower_values))
     code_pool = _mean_code_pool(reference)
+    predictive_reference, payout_window, payout_validation_coverage = (
+        _select_predictive_reference(reference, probabilities)
+    )
+    predictive_lower_values = [
+        _lower_rank_ev(draw, probabilities) for draw in predictive_reference
+    ]
     participation = None
     forecaster: ParticipationForecaster | None = None
-    forecast_date = target_date
+    forecast_date = report_target_date
     if expected_co_winners is None:
-        dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
-        forecast_date = target_date or max(dated) + timedelta(days=2)
         forecaster = fit_participation_forecaster(
-            draws,
+            historical,
             participation_min_train,
             participation_folds,
             bootstrap_simulations,
@@ -165,13 +209,15 @@ def estimate_value(
     price = TICKET_PRICES[game]
 
     rng = random.Random(seed)
-    sample_indices = [rng.randrange(len(reference)) for _ in range(bootstrap_simulations)]
-    sample_lower_values = [lower_values[index] for index in sample_indices]
+    sample_indices = [
+        rng.randrange(len(predictive_reference)) for _ in range(bootstrap_simulations)
+    ]
+    sample_lower_values = [predictive_lower_values[index] for index in sample_indices]
     sample_code_pools = [
         (
-            reference[index].code_winners * reference[index].code_payout
-            if reference[index].code_winners is not None
-            and reference[index].code_payout is not None
+            predictive_reference[index].code_winners * predictive_reference[index].code_payout
+            if predictive_reference[index].code_winners is not None
+            and predictive_reference[index].code_payout is not None
             else code_pool
         )
         for index in sample_indices
@@ -233,6 +279,8 @@ def estimate_value(
     support_max = participation.training_jackpot_max if participation else None
     return ValueReport(
         game=game,
+        target_date=report_target_date,
+        training_last_date=training_last_date,
         reference_draws=len(reference),
         jackpot=jackpot,
         expected_co_winners=expected_co_winners,
@@ -249,6 +297,8 @@ def estimate_value(
         participation_extrapolated=(participation.extrapolated if participation else False),
         lower_rank_ev=lower_ev,
         lower_rank_ev_method="mean_of_draw_level_expected_values",
+        predictive_payout_window=payout_window,
+        payout_validation_coverage=payout_validation_coverage,
         code_ev=code_ev,
         estimated_ev=estimated_ev,
         estimated_roi=estimated_ev / price,
@@ -265,7 +315,7 @@ def estimate_value(
             and conservative_jackpot is not None
             and conservative_jackpot > support_max
         ),
-        uncertainty_method="historical_predictive_bootstrap",
+        uncertainty_method="temporally_selected_historical_predictive_bootstrap",
         decision="eligible" if ci_low > price else "no_bet",
         limitations=(
             "Le rang 9 fournit un proxy du nombre de grilles, pas le volume FDJ certifie.",

@@ -9,6 +9,7 @@ from loto_lab.ml import (
     blend_with_uniform,
     build_feature_dataset,
     nested_ml_backtest,
+    next_feature_matrix,
     predict_next_draw,
     project_inclusion_probabilities,
 )
@@ -57,6 +58,26 @@ class MLTests(unittest.TestCase):
         prediction = predict_next_draw(draws, results, date(2021, 1, 1))
         if not results[0].qualified:
             self.assertEqual(prediction["status"], "abstention")
+
+    def test_prediction_rejects_a_date_inside_training_history(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("bayesian",),
+        )
+        with self.assertRaisesRegex(ValueError, "posterieure"):
+            predict_next_draw(draws, results, draws[-1].draw_date, force=True)
+
+    def test_next_features_ignore_draws_on_or_after_target(self) -> None:
+        draws = dated_random_draws(80)
+        target = draws[40].draw_date
+        expected = next_feature_matrix(draws[:40], target)
+        actual = next_feature_matrix(draws, target)
+        np.testing.assert_allclose(actual, expected)
 
 
 if __name__ == "__main__":

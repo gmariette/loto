@@ -47,7 +47,12 @@ class ValueTests(unittest.TestCase):
         self.assertGreater(result.code_ev, 0)
         self.assertLess(result.jackpot_share_factor, 1)
         self.assertGreaterEqual(result.conservative_jackpot or 0, result.fair_jackpot)
-        self.assertEqual(result.uncertainty_method, "historical_predictive_bootstrap")
+        self.assertEqual(
+            result.uncertainty_method,
+            "temporally_selected_historical_predictive_bootstrap",
+        )
+        self.assertGreater(result.predictive_payout_window, 0)
+        self.assertGreaterEqual(result.payout_validation_coverage, 0)
 
     def test_lower_rank_ev_averages_complete_draw_values(self) -> None:
         draws = []
@@ -68,6 +73,18 @@ class ValueTests(unittest.TestCase):
         result = estimate_value(draws, jackpot=2_000_000, bootstrap_simulations=100)
         lower_probability = sum(item.probability for item in rank_probabilities() if item.rank > 1)
         self.assertAlmostEqual(result.lower_rank_ev, 51 * lower_probability)
+
+    def test_value_target_date_discards_future_payouts(self) -> None:
+        draws = participation_draws(180)
+        cutoff = draws[100].draw_date
+        result = estimate_value(
+            draws,
+            jackpot=2_000_000,
+            target_date=cutoff,
+            bootstrap_simulations=100,
+        )
+        self.assertEqual(result.reference_draws, 100)
+        self.assertLess(result.training_last_date, cutoff)
 
 
 if __name__ == "__main__":

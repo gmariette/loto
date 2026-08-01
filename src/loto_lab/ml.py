@@ -177,7 +177,14 @@ def next_feature_matrix(
     rules: LotteryRules = DEFAULT_RULES,
 ) -> np.ndarray:
     state = _FeatureState(rules)
-    ordered = sorted(draws, key=lambda draw: (draw.draw_date is None, draw.draw_date, draw.game))
+    historical = [
+        draw
+        for draw in draws
+        if draw.draw_date is not None and draw.draw_date < target_date
+    ]
+    if not historical:
+        raise ValueError("Aucun tirage strictement anterieur a la date cible")
+    ordered = sorted(historical, key=lambda draw: (draw.draw_date, draw.game))
     for _, iterator in groupby(ordered, key=lambda draw: draw.draw_date):
         state.update_date_group(list(iterator))
     placeholder = Draw(tuple(range(1, rules.main_drawn + 1)), 1, target_date, game)
@@ -484,6 +491,9 @@ def predict_next_draw(
     force: bool = False,
     seed: int = 0,
 ) -> dict[str, object]:
+    dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
+    if dated and target_date <= max(dated):
+        raise ValueError("ml-predict exige une date posterieure au dernier tirage fourni")
     qualified = [result for result in results if result.qualified]
     status = "qualified"
     if not qualified:

@@ -26,6 +26,7 @@ dix classes supplementaire.
 - Qualification uniquement si l'intervalle du delta Brier est entierement meilleur que zero.
 - Participation inferee par le rang 9 et comparee a une mediane segmentee sur des folds futurs.
 - Biais de retransformation mesure en niveau et facteur de smearing estime sans donnees futures.
+- Backtest de valeur bloque comparant MAE/RMSE, couverture et decisions a une reference naive.
 
 ## Limites
 
@@ -35,6 +36,7 @@ dix classes supplementaire.
 - Le volume de grilles est un proxy statistique, pas une mesure FDJ certifiee.
 - Le facteur de smearing est global et ne capture pas toute heteroscedasticite conditionnelle.
 - Le gradient boosting n'extrapole pas naturellement au-dela des jackpots d'apprentissage.
+- La couverture observee de 93,69 % reste legerement sous la cible nominale de 95 %.
 - Changements possibles de materiel et de procedure non observables.
 - Un avantage de score statistique ne garantirait pas un rendement superieur au prix des grilles.
 

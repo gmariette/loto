@@ -96,6 +96,10 @@ Une valeur `mean_delta` negative indique un score de Brier meilleur que l'unifor
 devient interessante que si elle est stable sur une periode future et statistiquement nette apres
 correction des essais multiples.
 
+Toutes les API datees appliquent une coupure stricte: un tirage dont la date est egale ou
+posterieure a la cible est exclu de l'apprentissage. `ml-predict` refuse une cible deja presente
+dans les donnees fournies.
+
 ### Validation ML
 
 Executer les modeles bayesien, logistique et gradient boosting :
@@ -149,6 +153,17 @@ codes historiques. `--popularity-factor` teste la popularite relative d'une comb
 `--co-winners` remplace explicitement le modele pour un scenario manuel. Le rapport distingue le
 jackpot d'equilibre central du jackpot ou la borne basse atteint le prix, recalcule la participation
 a chaque niveau et signale toute extrapolation au-dela des jackpots observes.
+
+Backtester le moteur monetaire complet sur des folds futurs :
+
+```bash
+loto-lab value-backtest data/loto.sqlite --game loto \
+  --min-train 500 --folds 3 --simulations 2000 --seed 42
+```
+
+La cible est l'esperance reconstruite depuis le bareme futur publie, les codes et le volume estime
+par le rang 9. La sortie compare le modele a un calcul naif sans partage ni codes, teste le delta
+MAE par bootstrap/permutation, mesure la couverture predictive et compte les faux `eligible`.
 
 Generer dix grilles distinctes :
 

@@ -29,6 +29,7 @@ from .simulation import load_payouts, simulate_bankroll
 from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequency_outliers
 from .strategy import anti_crowd_score, generate_tickets
 from .value import estimate_value
+from .value_backtest import backtest_value
 
 
 def _print_json(value: object) -> None:
@@ -187,6 +188,20 @@ def command_participation_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def command_value_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    _print_json(
+        backtest_value(
+            draws,
+            game=args.game,
+            min_train=args.min_train,
+            folds=args.folds,
+            simulations=args.simulations,
+            seed=args.seed,
+        ).to_dict()
+    )
+
+
 def command_generate(args: argparse.Namespace) -> None:
     weights = None
     if args.mode == "frequency":
@@ -316,6 +331,20 @@ def build_parser() -> argparse.ArgumentParser:
     participation.add_argument("--simulations", type=int, default=2_000)
     participation.add_argument("--seed", type=int, default=0)
     participation.set_defaults(handler=command_participation_backtest)
+
+    value_backtest = subparsers.add_parser(
+        "value-backtest",
+        help="Valider chronologiquement le moteur d'esperance monetaire",
+    )
+    value_backtest.add_argument("data", type=Path, nargs="+")
+    value_backtest.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    value_backtest.add_argument("--min-train", type=int, default=500)
+    value_backtest.add_argument("--folds", type=int, default=3)
+    value_backtest.add_argument("--simulations", type=int, default=500)
+    value_backtest.add_argument("--seed", type=int, default=0)
+    value_backtest.set_defaults(handler=command_value_backtest)
 
     value = subparsers.add_parser(
         "value", help="Estimer l'esperance monetaire d'un jackpot annonce"

@@ -62,6 +62,19 @@ class ParticipationTests(unittest.TestCase):
         self.assertTrue(forecast.extrapolated)
         self.assertTrue(all(factor > 0 for factor in results[0].calibration_factors))
 
+    def test_historical_forecast_discards_future_draws(self) -> None:
+        draws = participation_draws(220)
+        target = draws[179].draw_date + timedelta(days=1)
+        forecast = forecast_participation(
+            draws,
+            5_000_000,
+            target,
+            min_train=100,
+            folds=2,
+            simulations=100,
+        )
+        self.assertEqual(forecast.observations, 180)
+
 
 if __name__ == "__main__":
     unittest.main()

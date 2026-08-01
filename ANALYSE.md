@@ -153,3 +153,15 @@ echantillonne un prochain bareme historique et l'erreur de participation. Les se
 conservateur reajustent le volume pour chaque jackpot candidat et signalent un depassement du
 support d'apprentissage. La decision reste `no_bet` tant que sa borne basse ne depasse pas le prix.
 La popularite reelle d'une combinaison reste inconnue et se teste seulement par scenario.
+
+## 10. Backtest de valeur
+
+Une estimation monetaire datee exclut tous les tirages egaux ou posterieurs a sa cible. Le backtest
+decoupe ensuite les dates futures en folds bloques. Au debut de chaque fold, il reajuste le modele
+de participation, choisit une fenetre predictive de baremes sur une validation interne, puis gele
+ces choix pour toute la periode test.
+
+La cible n'est pas le gain aleatoire d'une grille particuliere. Elle reconstruit l'esperance du
+bareme futur avec les probabilites exactes, le volume deduit du rang 9, les codes publies et un
+partage Poisson moyen. Le protocole annonce biais, MAE, RMSE, couverture, intervalle de Wilson,
+delta apparie face a une reference sans partage ni codes et nombres de faux positifs/negatifs.
