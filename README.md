@@ -103,7 +103,7 @@ dans les donnees fournies.
 ### Validation ML
 
 Executer les modeles bayesien cumulatif, bayesien temporel, logistique probabiliste, logistique
-optimisee pour le Top-5 et gradient boosting sur le jeu cible uniquement :
+optimisee pour le Top-5, Ridge intra-tirage et gradient boosting sur le jeu cible uniquement :
 
 ```bash
 loto-lab ml-backtest data/loto.sqlite \
@@ -119,7 +119,9 @@ fenetre et son a priori dans le passe. Les probabilites sont reprojetees
 pour que leur somme soit exactement 5. Une intensite choisie dans la validation interne retracte
 ensuite chaque modele vers l'uniforme; une intensite nulle annule tout signal non reproductible.
 Le `logistic_ranker` choisit au contraire sa regularisation sur les hits internes et conserve le
-classement complet. Chaque famille possede une graine stable independante de son ordre dans la liste.
+classement complet. Le `ridge_ranker` centre les 49 candidats de chaque tirage avant apprentissage :
+seules les differences entre numeros peuvent influencer leur ordre. Chaque famille possede une
+graine stable independante de son ordre dans la liste.
 
 Demander une prediction avec abstention obligatoire :
 
@@ -129,11 +131,29 @@ loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
 
 Le programme ne renvoie des numeros que si le modele se qualifie sur l'une de deux voies : Brier
 significativement meilleur que l'uniforme, ou gain de hits Top-5 dont la borne basse est positive.
-Les p-values des cinq modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
+Les p-values des six modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
 existe pour les experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
 Elle publie aussi le jeu, la cible, la derniere date d'apprentissage, le delta Brier, son intervalle,
 les hits Top-5, leurs intervalles et p-values corrigees, ainsi que l'amplitude des probabilites afin
 qu'une grille ne soit jamais detachee de sa preuve de non-qualification.
+
+Figer une experience sans mise avant tirage, puis la noter apres publication du resultat :
+
+```bash
+loto-lab ml-record data/loto.sqlite --date 2026-08-01 --game loto \
+  --seed 20260801 --force --export evidence/number-prospective-ledger.json
+loto-lab ml-score data/loto.sqlite \
+  --result-source https://www.fdj.fr/jeux-de-tirage/loto/resultats/... \
+  --export evidence/number-prospective-ledger.json
+loto-lab ml-ledger-verify evidence/number-prospective-ledger.json
+```
+
+Le registre des numeros est append-only et separe les changements scientifiques par empreinte du
+code, des parametres et des dependances. Chaque cohorte est jugee sur ses 100 premiers scores. Pour
+empecher des versions successives de multiplier les chances de faux positif, la cohorte `i` recoit
+le budget `0,05 / (i * (i + 1))`; la somme de tous les essais presents et futurs reste sous 5 %.
+Le test prospectif utilise la loi hypergeometrique exacte des hits Top-5. Une qualification
+historique seule ne suffit donc pas a revendiquer un avantage exploitable.
 
 ### Esperance monetaire
 

@@ -16,9 +16,16 @@ from .data import (
 )
 from .database import build_database, database_info
 from .domain import DEFAULT_RULES, LotteryRules
-from .ml import nested_ml_backtest, predict_next_draw
-from .model_identity import build_model_specification
+from .ml import DEFAULT_MODELS, nested_ml_backtest, predict_next_draw
+from .model_identity import build_model_specification, build_number_model_specification
 from .models import SmoothedFrequencyPredictor, standard_backtests
+from .number_prospective import (
+    export_number_evidence,
+    record_number_forecast,
+    score_pending_number_forecasts,
+    verify_number_evidence,
+    verify_number_ledger,
+)
 from .participation import participation_backtest
 from .probability import (
     expected_budget,
@@ -168,6 +175,85 @@ def command_ml_predict(args: argparse.Namespace) -> None:
             seed=args.seed,
         )
     )
+
+
+def command_ml_record(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    target_date = date.fromisoformat(args.date)
+    if any(draw.game == args.game and draw.draw_date == target_date for draw in draws):
+        raise SystemExit("Le tirage cible est deja present: enregistrement retrospectif refuse")
+    results = nested_ml_backtest(
+        draws,
+        min_history=args.min_history,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        seed=args.seed,
+        game=args.game,
+    )
+    prediction = predict_next_draw(
+        draws,
+        results,
+        target_date,
+        game=args.game,
+        force=args.force,
+        seed=args.seed,
+    )
+    specification = build_number_model_specification(
+        game=args.game,
+        min_history=args.min_history,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        seed=args.seed,
+        models=DEFAULT_MODELS,
+    )
+    record = record_number_forecast(
+        args.ledger,
+        prediction,
+        model_specification=specification,
+        provenance={"data": build_data_provenance(args.data, draws)},
+    )
+    payload: dict[str, object] = {"record": record, "ledger": verify_number_ledger(args.ledger)}
+    if args.export:
+        write_json_atomic(args.export, export_number_evidence(args.ledger))
+        payload["evidence_export"] = str(args.export)
+    _print_json(payload)
+
+
+def command_ml_score(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    result = score_pending_number_forecasts(
+        args.ledger,
+        draws,
+        provenance={
+            "result_source": args.result_source,
+            "data": build_data_provenance(args.data, draws),
+        },
+    )
+    payload: dict[str, object] = {**result, "ledger": verify_number_ledger(args.ledger)}
+    if args.export:
+        write_json_atomic(args.export, export_number_evidence(args.ledger))
+        payload["evidence_export"] = str(args.export)
+    _print_json(payload)
+
+
+def command_ml_ledger_info(args: argparse.Namespace) -> None:
+    _print_json(verify_number_ledger(args.ledger))
+
+
+def command_ml_ledger_export(args: argparse.Namespace) -> None:
+    evidence = export_number_evidence(args.ledger)
+    write_json_atomic(args.output, evidence)
+    _print_json({"output": str(args.output), "ledger": evidence["ledger"]})
+
+
+def command_ml_ledger_verify(args: argparse.Namespace) -> None:
+    try:
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Preuve de numeros illisible: {error}") from error
+    _print_json(verify_number_evidence(evidence))
 
 
 def command_value(args: argparse.Namespace) -> None:
@@ -429,6 +515,60 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--seed", type=int, default=0)
     ml_predict.add_argument("--force", action="store_true")
     ml_predict.set_defaults(handler=command_ml_predict)
+
+    ml_record = subparsers.add_parser(
+        "ml-record", help="Figer une grille ML prospective avant le tirage"
+    )
+    ml_record.add_argument("data", type=Path, nargs="+")
+    ml_record.add_argument("--date", required=True)
+    ml_record.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    ml_record.add_argument("--min-history", type=int, default=50)
+    ml_record.add_argument("--min-train", type=int, default=500)
+    ml_record.add_argument("--folds", type=int, default=3)
+    ml_record.add_argument("--simulations", type=int, default=2_000)
+    ml_record.add_argument("--seed", type=int, default=0)
+    ml_record.add_argument("--force", action="store_true")
+    ml_record.add_argument(
+        "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
+    )
+    ml_record.add_argument("--export", type=Path)
+    ml_record.set_defaults(handler=command_ml_record)
+
+    ml_score = subparsers.add_parser(
+        "ml-score", help="Noter les grilles ML dont le tirage est disponible"
+    )
+    ml_score.add_argument("data", type=Path, nargs="+")
+    ml_score.add_argument(
+        "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
+    )
+    ml_score.add_argument("--result-source", required=True)
+    ml_score.add_argument("--export", type=Path)
+    ml_score.set_defaults(handler=command_ml_score)
+
+    ml_ledger_info = subparsers.add_parser(
+        "ml-ledger-info", help="Verifier le registre prospectif des numeros"
+    )
+    ml_ledger_info.add_argument(
+        "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
+    )
+    ml_ledger_info.set_defaults(handler=command_ml_ledger_info)
+
+    ml_ledger_export = subparsers.add_parser(
+        "ml-ledger-export", help="Exporter les preuves prospectives des numeros"
+    )
+    ml_ledger_export.add_argument(
+        "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
+    )
+    ml_ledger_export.add_argument("--output", type=Path, required=True)
+    ml_ledger_export.set_defaults(handler=command_ml_ledger_export)
+
+    ml_ledger_verify = subparsers.add_parser(
+        "ml-ledger-verify", help="Verifier un export prospectif des numeros"
+    )
+    ml_ledger_verify.add_argument("evidence", type=Path)
+    ml_ledger_verify.set_defaults(handler=command_ml_ledger_verify)
 
     participation = subparsers.add_parser(
         "participation-backtest",

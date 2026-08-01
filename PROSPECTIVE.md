@@ -65,3 +65,12 @@ Elle obtient `0,5192` hit hors echantillon contre `0,5232` pour la logistique st
 qualifie pas. Les graines etant maintenant stables par identite de modele, les resultats des quatre
 familles precedentes et la grille `18 35 36 43 46`, Chance `3`, restent inchanges. Empreinte :
 `c3ac34a033e7384c8ff542a1e17aac1f19fcfbc261f78246b96c13d9d20dc1e6`.
+
+La version 0.16 ouvre le [registre prospectif des numeros](evidence/number-prospective-ledger.json).
+Le Ridge centre dans chaque tirage devient le meilleur challenger historique brut avec `0,5304`
+hit Top-5, mais son intervalle couvre zero et il reste `forced_experimental`. La premiere cohorte,
+`4be41500c3a70d640cc93763ba4af697875b5e1183a4236a82733e5bc50f91da`, exige 100 scores et
+dispose d'un budget alpha de `0,025`; elle en a actuellement zero. La grille sans mise figee a
+18 h 55 est `1 11 14 33 43`, Chance `9`. Tete append-only :
+`bb1e78b077333218599ea3faadb94083fd09466c5d7566e078d412fb7de87c5b`. Empreinte du bundle :
+`d2d45128a316e68fae619a18bc51a90aee57c62cc6c2498fe22de6e4b3f28b3f`.

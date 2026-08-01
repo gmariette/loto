@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -220,6 +220,7 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
     ),
     "logistic": ({"c": 0.01}, {"c": 0.1}, {"c": 1.0}),
     "logistic_ranker": ({"c": 0.01}, {"c": 0.1}, {"c": 1.0}),
+    "ridge_ranker": tuple({"alpha": alpha} for alpha in (0.1, 1.0, 10.0, 100.0, 1000.0)),
     "gradient_boosting": (
         {"learning_rate": 0.03, "max_leaf_nodes": 7, "l2": 1.0},
         {"learning_rate": 0.05, "max_leaf_nodes": 15, "l2": 5.0},
@@ -232,9 +233,18 @@ MODEL_SEED_OFFSETS = {
     "logistic": 20_000,
     "gradient_boosting": 30_000,
     "logistic_ranker": 40_000,
+    "ridge_ranker": 50_000,
 }
 
 UNIFORM_BLEND_WEIGHTS = (0.0, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
+DEFAULT_MODELS = (
+    "bayesian",
+    "rolling_bayesian",
+    "logistic",
+    "gradient_boosting",
+    "logistic_ranker",
+    "ridge_ranker",
+)
 
 
 def blend_with_uniform(probabilities: np.ndarray, weight: float) -> np.ndarray:
@@ -266,6 +276,18 @@ def _fit_predict(
         frequencies = x_test[:, :, feature_index] + (5 / 49)
         prior = float(parameters["prior_strength"])
         raw = (frequencies * history + prior * (5 / 49)) / (history + prior)
+    elif model_name == "ridge_ranker":
+        centered_train = x_train - x_train.mean(axis=1, keepdims=True)
+        centered_test = x_test - x_test.mean(axis=1, keepdims=True)
+        estimator = Ridge(alpha=float(parameters["alpha"]), fit_intercept=False)
+        estimator.fit(
+            centered_train.reshape(-1, centered_train.shape[-1]),
+            (y_train - (5 / 49)).reshape(-1),
+        )
+        scores = estimator.predict(
+            centered_test.reshape(-1, centered_test.shape[-1])
+        ).reshape(test_shape)
+        raw = (5 / 49) + scores
     else:
         train_x = x_train.reshape(-1, x_train.shape[-1])
         train_y = y_train.reshape(-1)
@@ -363,7 +385,7 @@ def _select_parameters(
     split_date = validation_dates[0]
     inner_train = train_indices[dataset.dates[train_indices] < split_date]
     validation = train_indices[dataset.dates[train_indices] >= split_date]
-    ranking_objective = model_name == "logistic_ranker"
+    ranking_objective = model_name in ("logistic_ranker", "ridge_ranker")
     best: tuple[tuple[float, float], dict[str, float | int]] | None = None
     for model_parameters in MODEL_PARAMETERS[model_name]:
         raw_predicted = _fit_predict(
@@ -600,13 +622,7 @@ def nested_ml_backtest(
     simulations: int = 2_000,
     seed: int = 0,
     game: str | None = None,
-    models: tuple[str, ...] = (
-        "bayesian",
-        "rolling_bayesian",
-        "logistic",
-        "gradient_boosting",
-        "logistic_ranker",
-    ),
+    models: tuple[str, ...] = DEFAULT_MODELS,
 ) -> list[MLBacktestResult]:
     if outer_folds < 2 or simulations < 100:
         raise ValueError("Il faut au moins 2 folds et 100 simulations")

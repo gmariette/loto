@@ -48,6 +48,7 @@ le fold correspondant.
 | Logistique retractee | +0,00000321 | [-0,00000675 ; +0,00001362] | 0,32956 | 0,5232 | non |
 | Gradient boosting retracte | 0 | [0 ; 0] | 0,32954 | 0,5147 | non |
 | Logistique optimisee Top-5 | +0,00020257 | [+0,00014879 ; +0,00025621] | 0,33068 | 0,5192 | non |
+| Ridge intra-tirage | +0,00015259 | [+0,00010292 ; +0,00020289] | 0,33049 | 0,5304 | non |
 
 La log-loss uniforme vaut `0,32954`. Le challenger temporel reduit d'environ 70 % la degradation du
 bayesien cumulatif, mais ne franchit pas zero. La logistique obtient davantage de hits Top-5 sans
@@ -58,7 +59,7 @@ totale et reproduit exactement le benchmark. Aucun modele ne se qualifie; `ml-pr
 La version 0.14 teste aussi directement le classement d'une grille. Les egalites de probabilites
 sont departagees par un alea reproductible, puis les hits sont compares a `25/49`. L'intervalle est
 bootstrappe et la p-value vient du null hypergeometrique exact. Dans le protocole courant, Holm
-corrige conjointement les cinq tests Brier et les cinq tests Top-5.
+corrige conjointement les six tests Brier et les six tests Top-5.
 
 | Modele | Hits Top-5 | Gain vs 25/49 | IC 95 % du gain | p Holm | Qualifie classement |
 |---|---:|---:|---:|---:|---:|
@@ -67,8 +68,9 @@ corrige conjointement les cinq tests Brier et les cinq tests Top-5.
 | Logistique retractee | 0,5232 | +0,0130 | [-0,0133 ; +0,0398] | 1,000 | non |
 | Gradient boosting retracte | 0,5147 | +0,0045 | [-0,0209 ; +0,0309] | 1,000 | non |
 | Logistique optimisee Top-5 | 0,5192 | +0,0090 | [-0,0191 ; +0,0354] | 1,000 | non |
+| Ridge intra-tirage | 0,5304 | +0,0202 | [-0,0062 ; +0,0466] | 0,912 | non |
 
-La logistique reste la meilleure en hits bruts, mais son intervalle couvre largement zero. Cette
+Ridge devient le meilleur en hits bruts, mais son intervalle couvre encore zero. Cette
 nouvelle metrique ne justifie donc toujours pas une grille predictive.
 
 La version 0.15 selectionne aussi une logistique directement sur les hits de la fenetre interne,
@@ -77,6 +79,14 @@ moins bien en classement externe que la logistique choisie au Brier (`0,5192` co
 degrade nettement la calibration. Cette tentative est rejetee. La meme version attribue une graine
 fixe a chaque identite de modele; les quatre resultats v0.14 restent ainsi strictement inchanges lors
 de l'ajout du cinquieme challenger.
+
+La version 0.16 centre les variables des 49 numeros a l'interieur de chaque tirage et ajuste un
+Ridge dont `alpha` est choisi sur les hits futurs de la fenetre interne. Il atteint `0,5304` contre
+`0,5102` pour l'uniforme, mais la p-value brute vaut `0,07596` et la p-value Holm `0,91154`. Deux
+autres prototypes directement optimises pour le rang, gradient boosting brut et signaux
+chaud/froid, restent sous ce score et ne sont pas integres. Un registre prospectif fige desormais
+chaque identite scientifique sur 100 scores et partage un budget d'erreur de 5 % entre toutes les
+cohortes successives.
 
 ## Participation et esperance monetaire
 
