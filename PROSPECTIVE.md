@@ -74,3 +74,14 @@ dispose d'un budget alpha de `0,025`; elle en a actuellement zero. La grille san
 18 h 55 est `1 11 14 33 43`, Chance `9`. Tete append-only :
 `bb1e78b077333218599ea3faadb94083fd09466c5d7566e078d412fb7de87c5b`. Empreinte du bundle :
 `d2d45128a316e68fae619a18bc51a90aee57c62cc6c2498fe22de6e4b3f28b3f`.
+
+La version 0.17 ouvre la cohorte 2 sans effacer la premiere. Le Ridge limite aux frequences
+10/50/200 atteint `0,5375` hit historique, avec une p-value brute de `0,01999`, mais l'intervalle
+touche zero et la p-value Holm vaut `0,27986`. Il reste donc `forced_experimental`. La grille sans
+mise figee a 19 h 05 est `6 20 40 42 44`, Chance `9`. La cohorte
+`bbcb709cbb00314a2d824ef003af169fb05629f904220df6993642bcc84c7faa` recoit le deuxieme budget
+alpha, `0,008333`, et reste a zero score sur 100. Tete append-only :
+`87d58a32a7eb11eb105d60990ac0b3a6db8a3553219290f384eecde2ddf57ccf`. Le bundle passe au schema
+2 pour conserver la chaine JSON canonique originale et sa representation lisible; le schema 1 reste
+verifiable. Empreinte du bundle :
+`4ddf625a48a934e4cbc2a204e01494c8afdb87dc882ad755fb98f46fa111fb16`.
