@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from collections import Counter, deque
+from collections import deque
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from itertools import groupby
@@ -213,6 +213,15 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
     ),
 }
 
+UNIFORM_BLEND_WEIGHTS = (0.0, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
+
+
+def blend_with_uniform(probabilities: np.ndarray, weight: float) -> np.ndarray:
+    if not 0 <= weight <= 1:
+        raise ValueError("Le poids du modele doit etre compris entre 0 et 1")
+    baseline = np.full_like(probabilities, 5 / 49, dtype=float)
+    return baseline + weight * (probabilities - baseline)
+
 
 def _fit_predict(
     model_name: str,
@@ -222,6 +231,7 @@ def _fit_predict(
     x_test: np.ndarray,
     seed: int,
 ) -> np.ndarray:
+    blend_weight = float(parameters.get("uniform_blend", 1.0))
     test_shape = x_test.shape[:2]
     if model_name == "bayesian":
         history = x_test[:, :, 0]
@@ -254,7 +264,8 @@ def _fit_predict(
             raise ValueError(f"Modele inconnu: {model_name}")
         estimator.fit(train_x, train_y)
         raw = estimator.predict_proba(test_x)[:, 1].reshape(test_shape)
-    return np.stack([project_inclusion_probabilities(row) for row in raw])
+    projected = np.stack([project_inclusion_probabilities(row) for row in raw])
+    return blend_with_uniform(projected, blend_weight)
 
 
 def _brier_by_draw(probabilities: np.ndarray, actual: np.ndarray) -> np.ndarray:
@@ -316,18 +327,21 @@ def _select_parameters(
     inner_train = train_indices[dataset.dates[train_indices] < split_date]
     validation = train_indices[dataset.dates[train_indices] >= split_date]
     best: tuple[float, dict[str, float | int]] | None = None
-    for parameters in MODEL_PARAMETERS[model_name]:
-        predicted = _fit_predict(
+    for model_parameters in MODEL_PARAMETERS[model_name]:
+        raw_predicted = _fit_predict(
             model_name,
-            parameters,
+            model_parameters,
             dataset.x[inner_train],
             dataset.y[inner_train],
             dataset.x[validation],
             seed,
         )
-        score = float(_brier_by_draw(predicted, dataset.y[validation]).mean())
-        if best is None or score < best[0]:
-            best = (score, parameters)
+        for blend_weight in UNIFORM_BLEND_WEIGHTS:
+            predicted = blend_with_uniform(raw_predicted, blend_weight)
+            score = float(_brier_by_draw(predicted, dataset.y[validation]).mean())
+            parameters = {**model_parameters, "uniform_blend": blend_weight}
+            if best is None or score < best[0]:
+                best = (score, parameters)
     return dict(best[1])
 
 
@@ -395,9 +409,9 @@ def _backtest_one_model(
         len(set(np.argsort(row)[-5:]).intersection(np.flatnonzero(target)))
         for row, target in zip(predicted, actual, strict=True)
     ]
-    serialized = [jsonable_parameters(parameters) for parameters in selected]
-    final_parameters = Counter(str(item) for item in serialized).most_common(1)[0][0]
-    final = next(item for item in serialized if str(item) == final_parameters)
+    final = _select_parameters(
+        dataset, model_name, np.arange(dataset.draw_count), seed + outer_folds
+    )
     return MLBacktestResult(
         model=model_name,
         outer_folds=len(date_folds),
@@ -417,10 +431,6 @@ def _backtest_one_model(
         mean_top5_hits=sum(hits) / len(hits),
         qualified=False,
     )
-
-
-def jsonable_parameters(parameters: dict[str, float | int]) -> dict[str, float | int]:
-    return {key: parameters[key] for key in sorted(parameters)}
 
 
 def _holm_adjust(results: list[MLBacktestResult]) -> list[MLBacktestResult]:
@@ -495,8 +505,11 @@ def predict_next_draw(
         target[np.newaxis, :, :],
         seed,
     )[0]
-    top = tuple(sorted(int(index + 1) for index in np.argsort(predicted)[-5:]))
     rng = random.Random(seed)
+    if float(np.ptp(predicted)) < 1e-12:
+        top = tuple(sorted(rng.sample(range(1, 50), 5)))
+    else:
+        top = tuple(sorted(int(index + 1) for index in np.argsort(predicted)[-5:]))
     return {
         "status": status,
         "model": champion.model,

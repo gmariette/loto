@@ -16,6 +16,12 @@ FDJ_CSV_WITH_DECIMALS = (
     "29/07/2026;41;34;15;27;40;9;4000000,00\n"
 )
 
+FDJ_CSV_WITH_CODES = (
+    "date_de_tirage;boule_1;boule_2;boule_3;boule_4;boule_5;numero_chance;"
+    "nombre_de_codes_gagnants;rapport_codes_gagnants\n"
+    "29/07/2026;41;34;15;27;40;9;10;20000,00\n"
+)
+
 LEGACY_CSV = (
     "date_de_tirage;boule_1;boule_2;boule_3;boule_4;boule_5;boule_6;"
     "boule_complementaire\n"
@@ -49,6 +55,14 @@ class DataTests(unittest.TestCase):
         self.assertEqual(draws[0].main, (15, 27, 34, 40, 41))
         self.assertEqual(draws[0].chance, 9)
         self.assertEqual(draws[0].prizes[0].payout, 4_000_000)
+
+    def test_loads_code_prizes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fdj.csv"
+            path.write_text(FDJ_CSV_WITH_CODES, encoding="utf-8")
+            draw = load_draws(path)[0]
+        self.assertEqual(draw.code_winners, 10)
+        self.assertEqual(draw.code_payout, 20_000)
 
     def test_rejects_invalid_draw(self) -> None:
         invalid = CSV.replace("1;2;3;4;5;6", "1;1;3;4;5;6")

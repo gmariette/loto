@@ -55,12 +55,18 @@ class Draw:
     draw_date: date | None = None
     game: str = "loto"
     prizes: tuple[PrizeResult, ...] = ()
+    code_winners: int | None = None
+    code_payout: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "main", DEFAULT_RULES.validate_main(self.main))
         DEFAULT_RULES.validate_chance(self.chance)
         if not self.game:
             raise ValueError("Le type de jeu ne peut pas etre vide")
+        if self.code_winners is not None and self.code_winners < 0:
+            raise ValueError("Le nombre de codes gagnants ne peut pas etre negatif")
+        if self.code_payout is not None and self.code_payout < 0:
+            raise ValueError("Le rapport des codes ne peut pas etre negatif")
 
 
 @dataclass(frozen=True, slots=True)

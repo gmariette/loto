@@ -4,7 +4,8 @@ Laboratoire Python reproductible pour tester si l'historique Loto, Super Loto et
 de la FDJ contient un signal
 predictif exploitable. Le projet calcule les probabilites exactes, audite l'uniformite des
 tirages, compare plusieurs heuristiques au hasard par backtest chronologique, simule une
-bankroll, execute une validation ML imbriquee et genere des grilles diversifiees.
+bankroll, execute une validation ML imbriquee, estime la participation et genere des grilles
+diversifiees.
 
 ## Conclusion honnete
 
@@ -67,7 +68,7 @@ loto-lab db-info --db data/loto.sqlite
 ```
 
 La base SQLite locale contient `5 566` tirages entre 1996 et juillet 2026, leurs numeros, le jeu,
-le regime, l'archive source et `40 660` observations de gagnants/rapports par rang. Elle est
+le regime, l'archive source, `40 660` observations par rang et `1 519` gains par code. Elle est
 reproductible et ignoree par Git afin d'eviter de versionner des donnees derivees et vite obsoletes.
 
 Analyser le regime actuel `5/49 + Chance` directement depuis SQLite :
@@ -106,7 +107,8 @@ Le protocole utilise une validation temporelle imbriquee : chaque fold externe m
 generalisation et une fenetre interne choisit les hyperparametres. Les variables incluent les
 frequences sur 10/50/200 tirages, le retard, les paires avec la date precedente, le jour, le type
 de jeu, la tendance temporelle et un effet regulier par numero. Les probabilites sont reprojetees
-pour que leur somme soit exactement 5.
+pour que leur somme soit exactement 5. Une intensite choisie dans la validation interne retracte
+ensuite chaque modele vers l'uniforme; une intensite nulle annule tout signal non reproductible.
 
 Demander une prediction avec abstention obligatoire :
 
@@ -120,15 +122,26 @@ experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
 
 ### Esperance monetaire
 
-Evaluer un jackpot annonce a partir des rapports historiques :
+Valider l'estimation du nombre de grilles jouees :
 
 ```bash
-loto-lab value data/loto.sqlite --game loto --jackpot 10000000 --co-winners 0
+loto-lab participation-backtest data/loto.sqlite --min-train 500 --folds 3
+```
+
+Le volume est estime par `gagnants du rang 9 / probabilite du rang 9`, puis une regression et un
+gradient boosting sont compares a une mediane historique par jeu et jour. Seul un modele dont
+l'intervalle apparie et la permutation corrigee battent cette reference est retenu.
+
+Evaluer automatiquement un jackpot annonce :
+
+```bash
+loto-lab value data/loto.sqlite --game loto --jackpot 10000000 --date 2026-08-01
 ```
 
 La decision vaut `eligible` seulement si la borne basse bootstrap de l'esperance depasse le prix
-de la grille. Le calcul ne connait ni le nombre futur de codes participants ni les co-gagnants
-reels; ces limites sont incluses dans la sortie.
+de la grille. Le calcul estime la participation, le partage Poisson du jackpot et la valeur des
+codes historiques. `--popularity-factor` teste la popularite relative d'une combinaison;
+`--co-winners` remplace explicitement le modele pour un scenario manuel.
 
 Generer dix grilles distinctes :
 

@@ -185,8 +185,24 @@ def _draws_from_rows(rows: Iterable[dict[str, object]], game: str = "loto") -> l
             chance = int(float(str(row[chance_column]).replace(",", ".")))
             parsed_date = _parse_date(str(row[date_column])) if date_column else None
             prizes = _extract_prizes(row, headers, 9)
+            code_winners_column = _find_column(headers, ("nombre_de_codes_gagnants",))
+            code_payout_column = _find_column(headers, ("rapport_codes_gagnants",))
+            code_winners = (
+                _optional_int(row[code_winners_column]) if code_winners_column else None
+            )
+            code_payout = (
+                _optional_float(row[code_payout_column]) if code_payout_column else None
+            )
             draws.append(
-                Draw(main, chance, parsed_date.date() if parsed_date else None, game, prizes)
+                Draw(
+                    main,
+                    chance,
+                    parsed_date.date() if parsed_date else None,
+                    game,
+                    prizes,
+                    code_winners,
+                    code_payout,
+                )
             )
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError(f"Ligne {row_number} invalide: {exc}") from exc
