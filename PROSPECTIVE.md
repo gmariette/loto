@@ -58,3 +58,10 @@ selectionne la logistique comme meilleur challenger brut mais constate une retra
 entierement uniforme et aucune qualification. Avec la meme graine, elle conserve exactement la
 grille initiale au lieu d'en choisir une seconde apres modification du protocole.
 Empreinte : `69910a617dec8029c088d504f2959f222947398928aeb8e83adbc96eaaeca428`.
+
+La [preuve v0.15](evidence/ranking-2026-08-01-v0.15.json), publiee avant la meme cloture,
+ajoute une logistique dont la regularisation est choisie directement sur les hits Top-5 internes.
+Elle obtient `0,5192` hit hors echantillon contre `0,5232` pour la logistique standard et ne se
+qualifie pas. Les graines etant maintenant stables par identite de modele, les resultats des quatre
+familles precedentes et la grille `18 35 36 43 46`, Chance `3`, restent inchanges. Empreinte :
+`c3ac34a033e7384c8ff542a1e17aac1f19fcfbc261f78246b96c13d9d20dc1e6`.
