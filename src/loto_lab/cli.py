@@ -25,6 +25,7 @@ from .probability import (
     rank_probabilities,
     total_outcomes,
 )
+from .prospective import ledger_info, record_value_forecast, score_pending_forecasts
 from .simulation import load_payouts, simulate_bankroll
 from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequency_outliers
 from .strategy import anti_crowd_score, generate_tickets
@@ -170,6 +171,57 @@ def command_value(args: argparse.Namespace) -> None:
             seed=args.seed,
         ).to_dict()
     )
+
+
+def command_value_record(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    target_date = date.fromisoformat(args.date)
+    if any(draw.game == args.game and draw.draw_date == target_date for draw in draws):
+        raise SystemExit("Le tirage cible est deja present: enregistrement retrospectif refuse")
+    report = estimate_value(
+        draws,
+        jackpot=args.jackpot,
+        game=args.game,
+        expected_co_winners=None,
+        target_date=target_date,
+        bootstrap_simulations=args.simulations,
+        seed=args.seed,
+    )
+    provenance = {
+        "data": [str(path) for path in args.data],
+        "jackpot_source": args.jackpot_source,
+        "bootstrap_simulations": args.simulations,
+        "seed": args.seed,
+    }
+    payload = {
+        "record": record_value_forecast(
+            args.ledger, report, provenance=provenance
+        ),
+        "report": report.to_dict(),
+        "provenance": provenance,
+        "ledger": ledger_info(args.ledger),
+    }
+    if args.export:
+        args.export.parent.mkdir(parents=True, exist_ok=True)
+        args.export.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
+    _print_json(payload)
+
+
+def command_value_score(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    _print_json(
+        {
+            **score_pending_forecasts(args.ledger, draws),
+            "ledger": ledger_info(args.ledger),
+        }
+    )
+
+
+def command_ledger_info(args: argparse.Namespace) -> None:
+    _print_json(ledger_info(args.ledger))
 
 
 def command_participation_backtest(args: argparse.Namespace) -> None:
@@ -379,6 +431,42 @@ def build_parser() -> argparse.ArgumentParser:
     value.add_argument("--simulations", type=int, default=2_000)
     value.add_argument("--seed", type=int, default=0)
     value.set_defaults(handler=command_value)
+
+    value_record = subparsers.add_parser(
+        "value-record",
+        help="Figer une estimation de valeur prospective avant le tirage",
+    )
+    value_record.add_argument("data", type=Path, nargs="+")
+    value_record.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_record.add_argument("--jackpot", type=float, required=True)
+    value_record.add_argument(
+        "--jackpot-source",
+        required=True,
+        help="URL publique horodatable qui confirme le jackpot annonce",
+    )
+    value_record.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    value_record.add_argument("--date", default=date.today().isoformat())
+    value_record.add_argument("--simulations", type=int, default=2_000)
+    value_record.add_argument("--seed", type=int, default=0)
+    value_record.add_argument("--export", type=Path)
+    value_record.set_defaults(handler=command_value_record)
+
+    value_score = subparsers.add_parser(
+        "value-score",
+        help="Noter les previsions figees dont le tirage est disponible",
+    )
+    value_score.add_argument("data", type=Path, nargs="+")
+    value_score.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_score.set_defaults(handler=command_value_score)
+
+    ledger = subparsers.add_parser(
+        "ledger-info",
+        help="Verifier la chaine de hachage et les metriques prospectives",
+    )
+    ledger.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    ledger.set_defaults(handler=command_ledger_info)
 
     generate = subparsers.add_parser("generate", help="Generer des grilles distinctes")
     generate.add_argument("--count", type=int, default=5)

@@ -117,6 +117,24 @@ Le moteur n'a emis aucun `eligible` et donc aucun faux positif. Trois baremes ob
 EV ponctuelle superieure au prix, tous refuses par la borne basse prudente. Ce resultat confirme
 une politique d'abstention conservatrice; il ne demontre pas une strategie de jeu rentable.
 
+## Validation prospective
+
+La version 0.7.0 arrete l'optimisation repetitive du meme test externe et ouvre un registre
+append-only. La premiere prevision a ete creee le 1er aout 2026 a 12:56 UTC, avant le tirage Loto
+du jour et avec le jackpot officiel de 5 M EUR. Elle utilise les donnees arretees au 29 juillet :
+
+| Mesure figee | Valeur |
+|---|---:|
+| EV | 1,08410 EUR |
+| Intervalle predictif | [0,81633 ; 1,41460] EUR |
+| ROI estime | 49,28 % |
+| Decision | `no_bet` |
+
+Le hash public est
+`39d08472180461bb0413a405fb705bf8e0bd8cc01522a4477132c870432abbc7`. La preuve complete est
+dans `evidence/value-2026-08-01.json`. Aucun score prospectif n'est encore disponible: annoncer une
+MAE ou une couverture prospective avec zero resultat serait trompeur.
+
 ## Regime historique : 6/49 + complementaire
 
 Echantillon separe : 2 707 tirages du 3 janvier 1996 au 4 octobre 2008, dont 2 664 Loto et

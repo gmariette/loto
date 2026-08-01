@@ -169,3 +169,19 @@ bareme futur avec les probabilites exactes, le volume deduit du rang 9, les code
 partage Poisson moyen. Le protocole annonce biais, MAE, RMSE, couverture et decisions. Les
 intervalles et permutations utilisent des blocs contigus de 12 tirages pour ne pas supposer
 artificiellement que les erreurs voisines sont independantes.
+
+## 11. Validation prospective
+
+Les iterations successives ont consulte plusieurs fois le meme historique externe. Meme avec une
+coupure temporelle correcte, ce processus finit par adapter les choix de methode au jeu de test.
+La suite de l'evaluation repose donc sur des estimations figees avant tirage.
+
+`value-record` interdit une date passee et une seconde prevision pour le meme jeu et la meme date.
+Il stocke rapport, version, provenance et configuration dans une base append-only, puis calcule un
+hash chaine. L'export JSON et le hash doivent etre commits et pousses avant le tirage: les triggers
+SQLite et le hash detectent une modification, tandis que Git fournit l'ancrage temporel externe.
+
+Apres publication des rapports, `value-score` reconstruit la meme cible d'EV que le backtest et
+ajoute un score chaine distinct. Biais, MAE, couverture et faux signaux prospectifs ne deviennent
+interpretables qu'apres un echantillon suffisant; le premier enregistrement ne permet aucune
+conclusion.

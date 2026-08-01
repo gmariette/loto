@@ -172,6 +172,34 @@ re-echantillonnage chronologique et compte les faux `eligible`. Dans chaque fold
 est reentraine uniquement sur le passe toutes les 52 dates; chaque periode publie son propre biais,
 sa MAE, sa couverture et ses erreurs de decision.
 
+### Validation prospective
+
+Figer une unique estimation avant un tirage et publier sa preuve :
+
+```bash
+loto-lab value-record data/loto.sqlite \
+  --ledger data/prospective.sqlite --game loto --jackpot 5000000 \
+  --date 2026-08-01 \
+  --jackpot-source https://www.fdj.fr/jeux-de-tirage/loto/resultats/mercredi-29-juillet-2026 \
+  --simulations 2000 --seed 42 --export evidence/value-2026-08-01.json
+loto-lab ledger-info --ledger data/prospective.sqlite
+```
+
+Le registre SQLite refuse la retroactivite, les doublons jeu/date, les mises a jour et les
+suppressions. Chaque prevision et chaque score prolongent une chaine SHA-256. Publier l'export JSON
+et le hash de tete dans Git avant le tirage fournit l'ancrage temporel externe; la base locale seule
+ne suffit pas, car son historique complet pourrait etre recree.
+
+Apres actualisation des archives et de la base des tirages :
+
+```bash
+loto-lab value-score data/loto.sqlite --ledger data/prospective.sqlite
+```
+
+Le score utilise le bareme, les codes et le volume deduit du rang 9. `ledger-info` ne calcule biais,
+MAE, couverture et erreurs de decision que sur ces previsions figees. Le premier ancrage public est
+documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
+
 Generer dix grilles distinctes :
 
 ```bash

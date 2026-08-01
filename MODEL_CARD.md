@@ -29,6 +29,7 @@ dix classes supplementaire.
 - Backtest de valeur walk-forward comparant MAE/RMSE, couverture et decisions a une reference naive.
 - Inference du moteur de valeur par blocs contigus de 12 tirages pour conserver la dependance locale.
 - Reentrainement toutes les 52 dates et calibration interne de l'horizon et des queues predictives.
+- Registre prospectif append-only, chaine SHA-256 et scoring seulement apres publication du bareme.
 
 ## Limites
 
@@ -42,6 +43,9 @@ dix classes supplementaire.
 - La couverture observee de 93,90 % reste legerement sous la cible nominale de 95 %.
 - Changements possibles de materiel et de procedure non observables.
 - Un avantage de score statistique ne garantirait pas un rendement superieur au prix des grilles.
+- Une chaine locale ne prouve sa chronologie que si son hash est publie avant le tirage.
+- Une seule prevision prospective est actuellement en attente; aucune performance future ne peut
+  encore etre estimee.
 
 ## Resultat actuel
 
