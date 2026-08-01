@@ -48,13 +48,19 @@ class ParticipationTests(unittest.TestCase):
         self.assertEqual({result.model for result in results}, {"ridge", "gradient_boosting"})
         forecast = forecast_participation(
             draws,
-            5_000_000,
+            20_000_000,
             date(2021, 1, 1),
             min_train=100,
             folds=2,
             simulations=100,
         )
         self.assertGreater(forecast.estimated_tickets, 0)
+        self.assertAlmostEqual(
+            forecast.estimated_tickets,
+            forecast.median_estimated_tickets * forecast.smearing_factor,
+        )
+        self.assertTrue(forecast.extrapolated)
+        self.assertTrue(all(factor > 0 for factor in results[0].calibration_factors))
 
 
 if __name__ == "__main__":

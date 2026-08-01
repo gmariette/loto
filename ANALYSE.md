@@ -143,7 +143,13 @@ mauvais en faux pronostic.
 Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Le rang 9 estime la
 participation car son esperance de gagnants est le nombre de grilles multiplie par sa probabilite
 exacte. Une validation temporelle compare Ridge et gradient boosting a une mediane par jeu et jour.
-Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool median des codes au
-nombre de grilles. Un bootstrap combine l'incertitude de rapports et l'erreur de participation.
-La decision reste `no_bet` tant que sa borne basse ne couvre pas le prix de la grille. La popularite
-reelle d'une combinaison reste inconnue et se teste seulement par scenario.
+La retransformation vers un nombre de grilles applique un facteur de smearing calcule sur une
+validation passee et publie son biais en niveau hors echantillon.
+
+Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool moyen des codes au
+nombre de grilles. Les petits rangs sont agreges comme moyenne des esperances completes par tirage,
+ce qui evite le biais d'une mediane calculee separement pour chaque rang. Un bootstrap predictif
+echantillonne un prochain bareme historique et l'erreur de participation. Les seuils central et
+conservateur reajustent le volume pour chaque jackpot candidat et signalent un depassement du
+support d'apprentissage. La decision reste `no_bet` tant que sa borne basse ne depasse pas le prix.
+La popularite reelle d'une combinaison reste inconnue et se teste seulement par scenario.

@@ -3,7 +3,11 @@ from __future__ import annotations
 import csv
 import io
 import re
+import shutil
+import ssl
+import subprocess
 import unicodedata
+import urllib.error
 import urllib.request
 import zipfile
 from collections.abc import Iterable
@@ -381,9 +385,23 @@ def _deduplicate_and_sort(draws: Iterable[Draw]) -> list[Draw]:
 def download_latest_archive(destination: str | Path, url: str = LATEST_ARCHIVE_URL) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.1"})
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-        content = response.read()
+    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.3.1"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+            content = response.read()
+    except urllib.error.URLError as exc:
+        if not isinstance(exc.reason, ssl.SSLCertVerificationError):
+            raise
+        curl = shutil.which("curl")
+        if curl is None:
+            raise
+        completed = subprocess.run(
+            [curl, "--fail", "--location", "--silent", "--show-error", url],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+        content = completed.stdout
     if not zipfile.is_zipfile(io.BytesIO(content)):
         raise ValueError("La reponse FDJ n'est pas une archive ZIP valide")
     target.write_bytes(content)

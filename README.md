@@ -67,6 +67,9 @@ loto-lab build-db --archives-dir data --db data/loto.sqlite --from-year 1996
 loto-lab db-info --db data/loto.sqlite
 ```
 
+Si la chaine TLS de Python est defectueuse sur macOS, le telechargement retente avec `curl` en
+conservant la verification des certificats; aucun mode non securise n'est utilise.
+
 La base SQLite locale contient `5 566` tirages entre 1996 et juillet 2026, leurs numeros, le jeu,
 le regime, l'archive source, `40 660` observations par rang et `1 519` gains par code. Elle est
 reproductible et ignoree par Git afin d'eviter de versionner des donnees derivees et vite obsoletes.
@@ -130,7 +133,9 @@ loto-lab participation-backtest data/loto.sqlite --min-train 500 --folds 3
 
 Le volume est estime par `gagnants du rang 9 / probabilite du rang 9`, puis une regression et un
 gradient boosting sont compares a une mediane historique par jeu et jour. Seul un modele dont
-l'intervalle apparie et la permutation corrigee battent cette reference est retenu.
+l'intervalle apparie et la permutation corrigee battent cette reference est retenu. La
+retransformation logarithmique applique un facteur de smearing estime dans le passe de chaque fold;
+la sortie publie egalement le biais en niveau avant et apres calibration.
 
 Evaluer automatiquement un jackpot annonce :
 
@@ -141,7 +146,9 @@ loto-lab value data/loto.sqlite --game loto --jackpot 10000000 --date 2026-08-01
 La decision vaut `eligible` seulement si la borne basse bootstrap de l'esperance depasse le prix
 de la grille. Le calcul estime la participation, le partage Poisson du jackpot et la valeur des
 codes historiques. `--popularity-factor` teste la popularite relative d'une combinaison;
-`--co-winners` remplace explicitement le modele pour un scenario manuel.
+`--co-winners` remplace explicitement le modele pour un scenario manuel. Le rapport distingue le
+jackpot d'equilibre central du jackpot ou la borne basse atteint le prix, recalcule la participation
+a chaque niveau et signale toute extrapolation au-dela des jackpots observes.
 
 Generer dix grilles distinctes :
 

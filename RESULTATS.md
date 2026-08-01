@@ -59,11 +59,22 @@ contre `0,2315` pour la mediane segmentee, soit `5,54 %` d'amelioration. Le delt
 IC 95 % de `[-0,01011 ; -0,00110]` et une p-value corrigee de Holm de `0,013`; il est qualifie.
 La regression Ridge, amelioree de `2,38 %`, ne se qualifie pas car son intervalle couvre zero.
 
-Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,40 millions` de grilles, `0,283`
-co-gagnant moyen et un facteur de partage du jackpot de `0,871`. En ajoutant environ `0,037 EUR`
-de codes, l'esperance vaut `1,285 EUR` pour `2,20 EUR`, soit un ROI de `58,43 %`, avec un IC 95 %
-de `[1,244 ; 1,330]`. Le jackpot d'equilibre indicatif vaut `30,03 M EUR` a participation figee.
-La decision reste `no_bet`.
+La version 0.3.1 ajoute une retransformation calibree du logarithme. Sur les folds externes, le
+biais agrege en niveau du gradient boosting passe de `-4,51 %` a `-3,08 %`; les facteurs sont
+calcules uniquement dans le passe de chaque fold. Le rapport donne aussi les bornes de jackpot
+observees afin de distinguer interpolation et extrapolation.
+
+Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,41 millions` de grilles, `0,283`
+co-gagnant moyen et un facteur de partage du jackpot de `0,871`. Les petits rangs sont maintenant
+agreges au niveau tirage par une moyenne, methode adaptee a une esperance, au lieu de medianes rang
+par rang. Avec
+environ `0,037 EUR` de codes, l'esperance vaut `1,304 EUR` pour `2,20 EUR`, soit un ROI de `59,29 %`.
+
+Le bootstrap predictif echantillonne un prochain bareme complet et l'erreur de participation; son
+IC 95 % `[1,072 ; 1,576]` est volontairement plus large que l'ancien intervalle d'estimation. Le
+seuil central dynamique vaut `30,281 M EUR`; la borne basse atteint seulement le prix vers
+`36,134 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
+et sont marques comme extrapolations. La decision reste `no_bet`.
 
 ## Regime historique : 6/49 + complementaire
 

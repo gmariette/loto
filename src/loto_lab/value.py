@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from math import exp, expm1
-from statistics import median
+from statistics import fmean
 
 from .domain import Draw
-from .participation import forecast_participation
+from .participation import ParticipationForecaster, fit_participation_forecaster
 from .probability import rank_probabilities, total_outcomes
 
 TICKET_PRICES = {"loto": 2.20, "super_loto": 3.0, "grand_loto": 5.0}
@@ -22,9 +23,14 @@ class ValueReport:
     expected_co_winners_source: str
     jackpot_share_factor: float
     estimated_tickets: float | None
+    median_estimated_tickets: float | None
+    participation_smearing_factor: float | None
     participation_model: str | None
     participation_log_rmse: float | None
+    participation_jackpot_max: float | None
+    participation_extrapolated: bool
     lower_rank_ev: float
+    lower_rank_ev_method: str
     code_ev: float
     estimated_ev: float
     estimated_roi: float
@@ -32,6 +38,10 @@ class ValueReport:
     ev_ci_high: float
     ticket_price: float
     fair_jackpot: float
+    fair_jackpot_extrapolated: bool
+    conservative_jackpot: float | None
+    conservative_jackpot_extrapolated: bool
+    uncertainty_method: str
     decision: str
     limitations: tuple[str, ...]
 
@@ -48,16 +58,16 @@ def _current_prize_draws(draws: list[Draw], game: str) -> list[Draw]:
     return selected
 
 
-def _rank_medians(draws: list[Draw]) -> dict[int, float]:
-    values: dict[int, list[float]] = {rank: [] for rank in range(1, 10)}
-    for draw in draws:
-        for prize in draw.prizes:
-            if prize.payout is not None and prize.payout > 0 and prize.rank in values:
-                values[prize.rank].append(prize.payout)
-    return {rank: median(payouts) for rank, payouts in values.items() if payouts}
+def _lower_rank_ev(draw: Draw, probabilities: dict[int, float]) -> float:
+    payouts = {
+        prize.rank: prize.payout
+        for prize in draw.prizes
+        if prize.payout is not None and prize.payout >= 0
+    }
+    return sum(probabilities[rank] * payouts.get(rank, 0.0) for rank in range(2, 10))
 
 
-def _median_code_pool(draws: list[Draw]) -> float:
+def _mean_code_pool(draws: list[Draw]) -> float:
     pools = [
         draw.code_winners * draw.code_payout
         for draw in draws
@@ -66,13 +76,37 @@ def _median_code_pool(draws: list[Draw]) -> float:
         and draw.code_winners > 0
         and draw.code_payout > 0
     ]
-    return float(median(pools)) if pools else 0.0
+    return float(fmean(pools)) if pools else 0.0
 
 
 def _poisson_share_factor(expected_other_winners: float) -> float:
     if expected_other_winners == 0:
         return 1.0
     return -expm1(-expected_other_winners) / expected_other_winners
+
+
+def _quantile(values: list[float], probability: float) -> float:
+    ordered = sorted(values)
+    return ordered[round(probability * (len(ordered) - 1))]
+
+
+def _solve_threshold(
+    value_at: Callable[[float], float], ticket_price: float, initial_high: float
+) -> float | None:
+    low = 1.0
+    high = max(initial_high, 1_000_000.0)
+    while value_at(high) < ticket_price and high < 1_000_000_000:
+        low = high
+        high *= 2
+    if value_at(high) < ticket_price:
+        return None
+    for _ in range(60):
+        middle = (low + high) / 2
+        if value_at(middle) >= ticket_price:
+            high = middle
+        else:
+            low = middle
+    return high
 
 
 def estimate_value(
@@ -99,23 +133,23 @@ def estimate_value(
     if len(reference) < 5:
         raise ValueError(f"Pas assez de tirages recents avec 9 rangs pour {game}")
     probabilities = {item.rank: item.probability for item in rank_probabilities()}
-    medians = _rank_medians(reference)
-    lower_ev = sum(probabilities[rank] * medians.get(rank, 0.0) for rank in range(2, 10))
-    code_pool = _median_code_pool(reference)
+    lower_values = [_lower_rank_ev(draw, probabilities) for draw in reference]
+    lower_ev = float(fmean(lower_values))
+    code_pool = _mean_code_pool(reference)
     participation = None
+    forecaster: ParticipationForecaster | None = None
+    forecast_date = target_date
     if expected_co_winners is None:
         dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
         forecast_date = target_date or max(dated) + timedelta(days=2)
-        participation = forecast_participation(
+        forecaster = fit_participation_forecaster(
             draws,
-            jackpot,
-            forecast_date,
-            game,
             participation_min_train,
             participation_folds,
             bootstrap_simulations,
             seed,
         )
+        participation = forecaster.forecast(jackpot, forecast_date, game)
         expected_co_winners = (
             participation.estimated_tickets / total_outcomes() * popularity_factor
         )
@@ -131,31 +165,72 @@ def estimate_value(
     price = TICKET_PRICES[game]
 
     rng = random.Random(seed)
-    bootstrap_values = []
-    for _ in range(bootstrap_simulations):
-        sample = [rng.choice(reference) for _ in reference]
-        sample_medians = _rank_medians(sample)
-        sample_lower = sum(
-            probabilities[rank] * sample_medians.get(rank, 0.0) for rank in range(2, 10)
+    sample_indices = [rng.randrange(len(reference)) for _ in range(bootstrap_simulations)]
+    sample_lower_values = [lower_values[index] for index in sample_indices]
+    sample_code_pools = [
+        (
+            reference[index].code_winners * reference[index].code_payout
+            if reference[index].code_winners is not None
+            and reference[index].code_payout is not None
+            else code_pool
         )
-        if participation is None:
-            sample_share = share_factor
-            sample_code_ev = code_ev
-        else:
-            sample_tickets = participation.estimated_tickets * exp(
-                rng.gauss(0, participation.backtest_log_rmse)
+        for index in sample_indices
+    ]
+    participation_errors = [rng.gauss(0, 1) for _ in range(bootstrap_simulations)]
+
+    def value_distribution(candidate_jackpot: float) -> tuple[float, list[float]]:
+        if forecaster is None or forecast_date is None:
+            point = lower_ev + probabilities[1] * candidate_jackpot * share_factor
+            values = [
+                sample_lower + probabilities[1] * candidate_jackpot * share_factor
+                for sample_lower in sample_lower_values
+            ]
+            return point, values
+        candidate = forecaster.forecast(candidate_jackpot, forecast_date, game)
+        candidate_lambda = (
+            candidate.estimated_tickets / total_outcomes() * popularity_factor
+        )
+        candidate_share = _poisson_share_factor(candidate_lambda)
+        candidate_code_ev = code_pool / candidate.estimated_tickets
+        point = (
+            lower_ev
+            + candidate_code_ev
+            + probabilities[1] * candidate_jackpot * candidate_share
+        )
+        values = []
+        for sample_lower, sample_pool, error in zip(
+            sample_lower_values,
+            sample_code_pools,
+            participation_errors,
+            strict=True,
+        ):
+            sample_tickets = candidate.estimated_tickets * exp(
+                error * candidate.backtest_log_rmse
+                - 0.5 * candidate.backtest_log_rmse**2
             )
             sample_lambda = sample_tickets / total_outcomes() * popularity_factor
-            sample_share = _poisson_share_factor(sample_lambda)
-            sample_code_pool = _median_code_pool(sample)
-            sample_code_ev = sample_code_pool / sample_tickets
-        bootstrap_values.append(
-            sample_lower + sample_code_ev + probabilities[1] * jackpot * sample_share
-        )
-    bootstrap_values.sort()
-    ci_low = bootstrap_values[round(0.025 * (len(bootstrap_values) - 1))]
-    ci_high = bootstrap_values[round(0.975 * (len(bootstrap_values) - 1))]
-    fair_jackpot = max(0.0, (price - lower_ev - code_ev) / probabilities[1] / share_factor)
+            values.append(
+                sample_lower
+                + sample_pool / sample_tickets
+                + probabilities[1]
+                * candidate_jackpot
+                * _poisson_share_factor(sample_lambda)
+            )
+        return point, values
+
+    bootstrap_values = value_distribution(jackpot)[1]
+    ci_low = _quantile(bootstrap_values, 0.025)
+    ci_high = _quantile(bootstrap_values, 0.975)
+    fair_jackpot = _solve_threshold(
+        lambda candidate: value_distribution(candidate)[0], price, jackpot
+    )
+    assert fair_jackpot is not None
+    conservative_jackpot = _solve_threshold(
+        lambda candidate: _quantile(value_distribution(candidate)[1], 0.025),
+        price,
+        fair_jackpot,
+    )
+    support_max = participation.training_jackpot_max if participation else None
     return ValueReport(
         game=game,
         reference_draws=len(reference),
@@ -164,9 +239,16 @@ def estimate_value(
         expected_co_winners_source=co_winner_source,
         jackpot_share_factor=share_factor,
         estimated_tickets=(participation.estimated_tickets if participation else None),
+        median_estimated_tickets=(
+            participation.median_estimated_tickets if participation else None
+        ),
+        participation_smearing_factor=(participation.smearing_factor if participation else None),
         participation_model=(participation.model if participation else None),
         participation_log_rmse=(participation.backtest_log_rmse if participation else None),
+        participation_jackpot_max=support_max,
+        participation_extrapolated=(participation.extrapolated if participation else False),
         lower_rank_ev=lower_ev,
+        lower_rank_ev_method="mean_of_draw_level_expected_values",
         code_ev=code_ev,
         estimated_ev=estimated_ev,
         estimated_roi=estimated_ev / price,
@@ -174,6 +256,16 @@ def estimate_value(
         ev_ci_high=ci_high,
         ticket_price=price,
         fair_jackpot=fair_jackpot,
+        fair_jackpot_extrapolated=(
+            support_max is not None and fair_jackpot > support_max
+        ),
+        conservative_jackpot=conservative_jackpot,
+        conservative_jackpot_extrapolated=(
+            support_max is not None
+            and conservative_jackpot is not None
+            and conservative_jackpot > support_max
+        ),
+        uncertainty_method="historical_predictive_bootstrap",
         decision="eligible" if ci_low > price else "no_bet",
         limitations=(
             "Le rang 9 fournit un proxy du nombre de grilles, pas le volume FDJ certifie.",
@@ -181,7 +273,8 @@ def estimate_value(
             "ajuster popularity_factor pour un scenario anti-foule.",
             "Le calcul des codes suppose que leur pool historique se repartit sur les grilles.",
             "Les rapports futurs et le nombre reel de co-gagnants restent inconnus.",
-            "Le jackpot d'equilibre fige la participation au niveau du jackpot annonce.",
+            "Les seuils reevaluent la participation mais deviennent des extrapolations au-dela "
+            "du jackpot maximal observe.",
             "Un point estime positif ne suffit pas: la decision utilise la borne basse a 95%.",
         ),
     )

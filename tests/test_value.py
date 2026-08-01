@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from test_participation import participation_draws
 
 from loto_lab.domain import Draw, PrizeResult
+from loto_lab.probability import rank_probabilities
 from loto_lab.value import estimate_value
 
 
@@ -45,6 +46,28 @@ class ValueTests(unittest.TestCase):
         self.assertGreater(result.estimated_tickets or 0, 0)
         self.assertGreater(result.code_ev, 0)
         self.assertLess(result.jackpot_share_factor, 1)
+        self.assertGreaterEqual(result.conservative_jackpot or 0, result.fair_jackpot)
+        self.assertEqual(result.uncertainty_method, "historical_predictive_bootstrap")
+
+    def test_lower_rank_ev_averages_complete_draw_values(self) -> None:
+        draws = []
+        for index, payout in enumerate((1.0, 101.0) * 3):
+            prizes = tuple(
+                PrizeResult(rank, 1, 1_000_000 if rank == 1 else payout)
+                for rank in range(1, 10)
+            )
+            draws.append(
+                Draw(
+                    (1, 2, 3, 4, 5),
+                    1,
+                    date(2020, 1, 1) + timedelta(days=index),
+                    "loto",
+                    prizes,
+                )
+            )
+        result = estimate_value(draws, jackpot=2_000_000, bootstrap_simulations=100)
+        lower_probability = sum(item.probability for item in rank_probabilities() if item.rank > 1)
+        self.assertAlmostEqual(result.lower_rank_ev, 51 * lower_probability)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ dix classes supplementaire.
 - Intervalle bootstrap, permutation appariee et correction de Holm.
 - Qualification uniquement si l'intervalle du delta Brier est entierement meilleur que zero.
 - Participation inferee par le rang 9 et comparee a une mediane segmentee sur des folds futurs.
+- Biais de retransformation mesure en niveau et facteur de smearing estime sans donnees futures.
 
 ## Limites
 
@@ -32,6 +33,8 @@ dix classes supplementaire.
 - Aucun identifiant public de machine, jeu de boules, maintenance ou operateur dans les archives.
 - Absence des combinaisons effectivement choisies par tous les joueurs.
 - Le volume de grilles est un proxy statistique, pas une mesure FDJ certifiee.
+- Le facteur de smearing est global et ne capture pas toute heteroscedasticite conditionnelle.
+- Le gradient boosting n'extrapole pas naturellement au-dela des jackpots d'apprentissage.
 - Changements possibles de materiel et de procedure non observables.
 - Un avantage de score statistique ne garantirait pas un rendement superieur au prix des grilles.
 
