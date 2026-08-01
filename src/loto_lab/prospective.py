@@ -1,0 +1,1351 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import sqlite3
+from collections.abc import Mapping
+from datetime import UTC, date, datetime, time
+from pathlib import Path
+from statistics import fmean
+from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+import numpy as np
+
+from . import __version__
+from .domain import Draw, PrizeResult
+from .model_identity import validate_model_specification
+from .probability import rank_probabilities, total_outcomes
+from .value import ValueReport, _lower_rank_ev, _poisson_share_factor
+from .value_backtest import _draw_jackpot, _draw_ticket_count, _moving_block_means
+
+GENESIS_HASH = "0" * 64
+PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
+LOTO_RECORDING_CUTOFF = time(20, 15)
+EVIDENCE_FORMAT = "loto-lab.prospective-ledger"
+EVIDENCE_SCHEMA_VERSION = 4
+SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2, 3, 4)
+CURRENT_LEDGER_SCHEMA_VERSION = 4
+PROSPECTIVE_QUALIFICATION_SCORES = 100
+PROSPECTIVE_BLOCK_SIZE = 12
+PROSPECTIVE_INFERENCE_SIMULATIONS = 2_000
+PROSPECTIVE_INFERENCE_SEED = 20_260_801
+
+LEDGER_SCHEMA = """
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS ledger_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS value_forecasts (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    evaluation_cohort TEXT,
+    game TEXT NOT NULL,
+    target_date TEXT NOT NULL,
+    training_last_date TEXT NOT NULL,
+    jackpot REAL NOT NULL,
+    estimated_ev REAL NOT NULL,
+    ev_ci_low REAL NOT NULL,
+    ev_ci_high REAL NOT NULL,
+    ticket_price REAL NOT NULL,
+    decision TEXT NOT NULL,
+    report_json TEXT NOT NULL,
+    previous_hash TEXT NOT NULL,
+    record_hash TEXT NOT NULL UNIQUE,
+    UNIQUE (game, target_date),
+    CHECK (target_date > training_last_date)
+);
+
+CREATE TABLE IF NOT EXISTS value_scores (
+    id INTEGER PRIMARY KEY,
+    forecast_id INTEGER NOT NULL UNIQUE REFERENCES value_forecasts(id),
+    scored_at TEXT NOT NULL,
+    observed_schedule_ev REAL NOT NULL,
+    error REAL NOT NULL,
+    absolute_error REAL NOT NULL,
+    covered INTEGER NOT NULL CHECK (covered IN (0, 1)),
+    observed_positive INTEGER NOT NULL CHECK (observed_positive IN (0, 1)),
+    false_positive INTEGER NOT NULL CHECK (false_positive IN (0, 1)),
+    false_negative INTEGER NOT NULL CHECK (false_negative IN (0, 1)),
+    draw_json TEXT NOT NULL,
+    naive_ev REAL,
+    naive_error REAL,
+    naive_absolute_error REAL,
+    absolute_error_delta REAL,
+    metrics_version INTEGER NOT NULL DEFAULT 1 CHECK (metrics_version IN (1, 2)),
+    score_provenance_json TEXT NOT NULL DEFAULT '{}',
+    hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2)),
+    previous_hash TEXT NOT NULL,
+    record_hash TEXT NOT NULL UNIQUE
+);
+
+CREATE TRIGGER IF NOT EXISTS value_forecasts_no_update
+BEFORE UPDATE ON value_forecasts BEGIN
+    SELECT RAISE(ABORT, 'value_forecasts is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS value_forecasts_no_delete
+BEFORE DELETE ON value_forecasts BEGIN
+    SELECT RAISE(ABORT, 'value_forecasts is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS value_scores_no_update
+BEFORE UPDATE ON value_scores BEGIN
+    SELECT RAISE(ABORT, 'value_scores is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS value_scores_no_delete
+BEFORE DELETE ON value_scores BEGIN
+    SELECT RAISE(ABORT, 'value_scores is append-only');
+END;
+"""
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _connect(path: str | Path) -> sqlite3.Connection:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(target)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.executescript(LEDGER_SCHEMA)
+    forecast_columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(value_forecasts)").fetchall()
+    }
+    if "evaluation_cohort" not in forecast_columns:
+        connection.execute("ALTER TABLE value_forecasts ADD COLUMN evaluation_cohort TEXT")
+    score_columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(value_scores)").fetchall()
+    }
+    if "score_provenance_json" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "score_provenance_json TEXT NOT NULL DEFAULT '{}'"
+        )
+    if "hash_version" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2))"
+        )
+    if "naive_ev" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_ev REAL")
+    if "naive_error" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_error REAL")
+    if "naive_absolute_error" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_absolute_error REAL")
+    if "absolute_error_delta" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN absolute_error_delta REAL")
+    if "metrics_version" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "metrics_version INTEGER NOT NULL DEFAULT 1 CHECK (metrics_version IN (1, 2))"
+        )
+    connection.execute(
+        """
+        INSERT INTO ledger_metadata(key, value) VALUES ('schema_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (str(CURRENT_LEDGER_SCHEMA_VERSION),),
+    )
+    connection.commit()
+    return connection
+
+
+def _forecast_hash(
+    *,
+    created_at: str,
+    model_version: str,
+    game: str,
+    target_date: str,
+    training_last_date: str,
+    jackpot: float,
+    estimated_ev: float,
+    ev_ci_low: float,
+    ev_ci_high: float,
+    ticket_price: float,
+    decision: str,
+    report_json: str,
+    previous_hash: str,
+) -> str:
+    return _digest(
+        {
+            "created_at": created_at,
+            "model_version": model_version,
+            "game": game,
+            "target_date": target_date,
+            "training_last_date": training_last_date,
+            "jackpot": float(jackpot),
+            "estimated_ev": float(estimated_ev),
+            "ev_ci_low": float(ev_ci_low),
+            "ev_ci_high": float(ev_ci_high),
+            "ticket_price": float(ticket_price),
+            "decision": decision,
+            "previous_hash": previous_hash,
+            "report_json": report_json,
+        }
+    )
+
+
+def _score_hash(
+    scored_at: str,
+    forecast_hash: str,
+    previous_hash: str,
+    draw_json: str,
+    metrics: dict[str, float | int],
+    *,
+    provenance_json: str = "{}",
+    hash_version: int = 1,
+) -> str:
+    payload: dict[str, object] = {
+        "scored_at": scored_at,
+        "forecast_hash": forecast_hash,
+        "previous_hash": previous_hash,
+        "draw_json": draw_json,
+        "metrics": metrics,
+    }
+    if hash_version == 2:
+        payload["hash_version"] = hash_version
+        payload["score_provenance_json"] = provenance_json
+    elif hash_version != 1:
+        raise ValueError(f"Version de hash de score inconnue: {hash_version}")
+    return _digest(payload)
+
+
+def _recording_is_open(target_date: date, current_time: datetime) -> bool:
+    local_time = current_time.astimezone(PARIS_TIMEZONE)
+    if target_date > local_time.date():
+        return True
+    if target_date < local_time.date():
+        return False
+    cutoff = datetime.combine(target_date, LOTO_RECORDING_CUTOFF, PARIS_TIMEZONE)
+    return local_time < cutoff
+
+
+def record_value_forecast(
+    ledger: str | Path,
+    report: ValueReport,
+    *,
+    model_version: str = __version__,
+    provenance: dict[str, object],
+) -> dict[str, object]:
+    _validate_official_source(provenance.get("jackpot_source"))
+    _validate_data_provenance(provenance.get("data"))
+    evaluation_cohort = validate_model_specification(provenance.get("model_specification"))
+    if report.target_date is None:
+        raise ValueError("Une prevision prospective exige une date cible")
+    if report.target_date <= report.training_last_date:
+        raise ValueError("La date cible doit etre posterieure aux donnees d'apprentissage")
+    current_time = datetime.now(UTC)
+    if not _recording_is_open(report.target_date, current_time):
+        raise ValueError("Une prevision prospective ne peut pas etre retroactive")
+    created_at = current_time.astimezone(UTC).isoformat()
+    payload = {"report": report.to_dict(), "provenance": provenance}
+    _validate_forecast_model_identity(model_version, evaluation_cohort, payload)
+    report_json = _canonical_json(payload)
+    connection = _connect(ledger)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        previous = connection.execute(
+            "SELECT record_hash FROM value_forecasts ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = str(previous["record_hash"]) if previous else GENESIS_HASH
+        record_hash = _forecast_hash(
+            created_at=created_at,
+            model_version=model_version,
+            game=report.game,
+            target_date=report.target_date.isoformat(),
+            training_last_date=report.training_last_date.isoformat(),
+            jackpot=report.jackpot,
+            estimated_ev=report.estimated_ev,
+            ev_ci_low=report.ev_ci_low,
+            ev_ci_high=report.ev_ci_high,
+            ticket_price=report.ticket_price,
+            decision=report.decision,
+            report_json=report_json,
+            previous_hash=previous_hash,
+        )
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO value_forecasts(
+                    created_at, model_version, evaluation_cohort, game, target_date,
+                    training_last_date,
+                    jackpot, estimated_ev, ev_ci_low, ev_ci_high, ticket_price, decision,
+                    report_json, previous_hash, record_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    created_at,
+                    model_version,
+                    evaluation_cohort,
+                    report.game,
+                    report.target_date.isoformat(),
+                    report.training_last_date.isoformat(),
+                    report.jackpot,
+                    report.estimated_ev,
+                    report.ev_ci_low,
+                    report.ev_ci_high,
+                    report.ticket_price,
+                    report.decision,
+                    report_json,
+                    previous_hash,
+                    record_hash,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise ValueError(
+                f"Une prevision {report.game} existe deja pour {report.target_date}"
+            ) from error
+        connection.commit()
+        return {
+            "forecast_id": int(cursor.lastrowid),
+            "created_at": created_at,
+            "game": report.game,
+            "target_date": report.target_date.isoformat(),
+            "training_last_date": report.training_last_date.isoformat(),
+            "model_version": model_version,
+            "evaluation_cohort": evaluation_cohort,
+            "decision": report.decision,
+            "estimated_ev": report.estimated_ev,
+            "naive_ev": report.naive_ev,
+            "ev_ci_low": report.ev_ci_low,
+            "ev_ci_high": report.ev_ci_high,
+            "previous_hash": previous_hash,
+            "record_hash": record_hash,
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _draw_payload(draw: Draw) -> dict[str, object]:
+    return {
+        "game": draw.game,
+        "draw_date": draw.draw_date,
+        "main": draw.main,
+        "chance": draw.chance,
+        "prizes": [
+            {"rank": prize.rank, "winners": prize.winners, "payout": prize.payout}
+            for prize in draw.prizes
+        ],
+        "code_winners": draw.code_winners,
+        "code_payout": draw.code_payout,
+    }
+
+
+def build_data_provenance(
+    paths: list[str | Path], draws: list[Draw]
+) -> dict[str, object]:
+    files = []
+    for value in paths:
+        path = Path(value)
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        files.append(
+            {
+                "path": str(path),
+                "size": path.stat().st_size,
+                "sha256": digest.hexdigest(),
+            }
+        )
+    dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
+    return {
+        "files": files,
+        "draws_snapshot": {
+            "count": len(draws),
+            "first_date": min(dated).isoformat() if dated else None,
+            "last_date": max(dated).isoformat() if dated else None,
+            "sha256": _digest([_draw_payload(draw) for draw in draws]),
+        },
+    }
+
+
+def _validate_official_source(value: object) -> str:
+    source = str(value)
+    parsed = urlparse(source)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not (
+        hostname == "fdj.fr" or hostname.endswith(".fdj.fr")
+    ):
+        raise ValueError("La source du resultat doit etre une URL HTTPS officielle FDJ")
+    return source
+
+
+def _valid_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_data_provenance(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("La provenance doit contenir les empreintes des donnees")
+    files = value.get("files")
+    snapshot = value.get("draws_snapshot")
+    if not isinstance(files, list) or not files or not isinstance(snapshot, dict):
+        raise ValueError("La provenance des donnees est incomplete")
+    for item in files:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("path"), str)
+            or not isinstance(item.get("size"), int)
+            or int(item["size"]) < 0
+            or not _valid_sha256(item.get("sha256"))
+        ):
+            raise ValueError("Une empreinte de fichier est invalide")
+    if (
+        not isinstance(snapshot.get("count"), int)
+        or int(snapshot["count"]) < 0
+        or not _valid_sha256(snapshot.get("sha256"))
+    ):
+        raise ValueError("L'empreinte logique des tirages est invalide")
+    return value
+
+
+def _model_version_at_least(
+    model_version: object, minimum: tuple[int, int]
+) -> bool:
+    try:
+        parts = tuple(int(part) for part in str(model_version).split(".")[:2])
+    except ValueError:
+        return False
+    return parts >= minimum
+
+
+def _uses_hashed_provenance(model_version: object) -> bool:
+    return _model_version_at_least(model_version, (0, 9))
+
+
+def _uses_model_specification(model_version: object) -> bool:
+    return _model_version_at_least(model_version, (0, 12))
+
+
+def _validate_forecast_model_identity(
+    model_version: object,
+    evaluation_cohort: object,
+    payload: object,
+) -> None:
+    required = _uses_model_specification(model_version)
+    if evaluation_cohort is None and not required:
+        return
+    if not isinstance(evaluation_cohort, str):
+        raise ValueError("Cohorte scientifique absente")
+    if not isinstance(payload, dict):
+        raise ValueError("Charge utile de prevision invalide")
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError("Provenance de prevision invalide")
+    specification_hash = validate_model_specification(
+        provenance.get("model_specification")
+    )
+    if specification_hash != evaluation_cohort:
+        raise ValueError("La cohorte scientifique ne correspond pas au modele")
+    specification = provenance["model_specification"]
+    assert isinstance(specification, dict)
+    parameters = specification["parameters"]
+    assert isinstance(parameters, dict)
+    report = payload.get("report")
+    if not isinstance(report, dict) or parameters.get("game") != report.get("game"):
+        raise ValueError("Le jeu ne correspond pas a la specification du modele")
+    for key in ("bootstrap_simulations", "seed"):
+        if parameters.get(key) != provenance.get(key):
+            raise ValueError(f"Le parametre {key} ne correspond pas au modele")
+
+
+def _observed_schedule_ev(draw: Draw) -> float | None:
+    probabilities = {item.rank: item.probability for item in rank_probabilities()}
+    jackpot = _draw_jackpot(draw)
+    actual_tickets = _draw_ticket_count(draw, probabilities[9])
+    if (
+        jackpot is None
+        or actual_tickets is None
+        or draw.code_winners is None
+        or draw.code_payout is None
+    ):
+        return None
+    return (
+        _lower_rank_ev(draw, probabilities)
+        + draw.code_winners * draw.code_payout / actual_tickets
+        + probabilities[1]
+        * jackpot
+        * _poisson_share_factor(actual_tickets / total_outcomes())
+    )
+
+
+def _stored_score_metrics(row: sqlite3.Row) -> dict[str, float | int]:
+    metrics: dict[str, float | int] = {
+        "observed_schedule_ev": float(row["observed_schedule_ev"]),
+        "error": float(row["error"]),
+        "absolute_error": float(row["absolute_error"]),
+        "covered": int(row["covered"]),
+        "observed_positive": int(row["observed_positive"]),
+        "false_positive": int(row["false_positive"]),
+        "false_negative": int(row["false_negative"]),
+    }
+    metrics_version = int(row["metrics_version"])
+    if metrics_version == 2:
+        metrics.update(
+            {
+                "metrics_version": metrics_version,
+                "naive_ev": float(row["naive_ev"]),
+                "naive_error": float(row["naive_error"]),
+                "naive_absolute_error": float(row["naive_absolute_error"]),
+                "absolute_error_delta": float(row["absolute_error_delta"]),
+            }
+        )
+    return metrics
+
+
+def score_pending_forecasts(
+    ledger: str | Path,
+    draws: list[Draw],
+    *,
+    provenance: dict[str, object],
+    current_time: datetime | None = None,
+) -> dict[str, object]:
+    _validate_official_source(provenance.get("result_source"))
+    _validate_data_provenance(provenance.get("data"))
+    score_provenance_json = _canonical_json(provenance)
+    hash_version = 2
+    by_target = {
+        (draw.game, draw.draw_date.isoformat()): draw
+        for draw in draws
+        if draw.draw_date is not None
+    }
+    scoring_time = current_time or datetime.now(UTC)
+    if scoring_time.tzinfo is None:
+        raise ValueError("L'heure de scoring doit inclure un fuseau horaire")
+    scored_at = scoring_time.astimezone(UTC).isoformat()
+    connection = _connect(ledger)
+    scored = []
+    skipped = []
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        pending = connection.execute(
+            """
+            SELECT f.* FROM value_forecasts f
+            LEFT JOIN value_scores s ON s.forecast_id = f.id
+            WHERE s.forecast_id IS NULL ORDER BY f.id
+            """
+        ).fetchall()
+        previous = connection.execute(
+            "SELECT record_hash FROM value_scores ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        previous_hash = str(previous["record_hash"]) if previous else GENESIS_HASH
+        for forecast in pending:
+            key = (str(forecast["game"]), str(forecast["target_date"]))
+            if _recording_is_open(date.fromisoformat(key[1]), scoring_time):
+                skipped.append(
+                    {"forecast_id": int(forecast["id"]), "reason": "tirage_non_cloture"}
+                )
+                continue
+            draw = by_target.get(key)
+            if draw is None:
+                skipped.append({"forecast_id": int(forecast["id"]), "reason": "tirage_absent"})
+                continue
+            observed_ev = _observed_schedule_ev(draw)
+            if observed_ev is None:
+                skipped.append(
+                    {"forecast_id": int(forecast["id"]), "reason": "bareme_incomplet"}
+                )
+                continue
+            estimated_ev = float(forecast["estimated_ev"])
+            ticket_price = float(forecast["ticket_price"])
+            eligible = str(forecast["decision"]) == "eligible"
+            observed_positive = observed_ev > ticket_price
+            metrics: dict[str, float | int] = {
+                "observed_schedule_ev": observed_ev,
+                "error": estimated_ev - observed_ev,
+                "absolute_error": abs(estimated_ev - observed_ev),
+                "covered": int(
+                    float(forecast["ev_ci_low"])
+                    <= observed_ev
+                    <= float(forecast["ev_ci_high"])
+                ),
+                "observed_positive": int(observed_positive),
+                "false_positive": int(eligible and not observed_positive),
+                "false_negative": int(not eligible and observed_positive),
+            }
+            forecast_payload = json.loads(str(forecast["report_json"]))
+            report_payload = forecast_payload.get("report", {})
+            naive_value = (
+                report_payload.get("naive_ev")
+                if isinstance(report_payload, dict)
+                else None
+            )
+            metrics_version = 1
+            if naive_value is not None:
+                metrics_version = 2
+                naive_ev = float(naive_value)
+                naive_error = naive_ev - observed_ev
+                metrics.update(
+                    {
+                        "metrics_version": metrics_version,
+                        "naive_ev": naive_ev,
+                        "naive_error": naive_error,
+                        "naive_absolute_error": abs(naive_error),
+                        "absolute_error_delta": metrics["absolute_error"]
+                        - abs(naive_error),
+                    }
+                )
+            draw_json = _canonical_json(_draw_payload(draw))
+            record_hash = _score_hash(
+                scored_at,
+                str(forecast["record_hash"]),
+                previous_hash,
+                draw_json,
+                metrics,
+                provenance_json=score_provenance_json,
+                hash_version=hash_version,
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO value_scores(
+                    forecast_id, scored_at, observed_schedule_ev, error, absolute_error,
+                    covered, observed_positive, false_positive, false_negative, draw_json,
+                    naive_ev, naive_error, naive_absolute_error, absolute_error_delta,
+                    metrics_version,
+                    score_provenance_json, hash_version, previous_hash, record_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(forecast["id"]),
+                    scored_at,
+                    metrics["observed_schedule_ev"],
+                    metrics["error"],
+                    metrics["absolute_error"],
+                    metrics["covered"],
+                    metrics["observed_positive"],
+                    metrics["false_positive"],
+                    metrics["false_negative"],
+                    draw_json,
+                    metrics.get("naive_ev"),
+                    metrics.get("naive_error"),
+                    metrics.get("naive_absolute_error"),
+                    metrics.get("absolute_error_delta"),
+                    metrics_version,
+                    score_provenance_json,
+                    hash_version,
+                    previous_hash,
+                    record_hash,
+                ),
+            )
+            scored.append(
+                {
+                    "score_id": int(cursor.lastrowid),
+                    "forecast_id": int(forecast["id"]),
+                    **metrics,
+                    "metrics_version": metrics_version,
+                    "provenance": provenance,
+                    "hash_version": hash_version,
+                    "record_hash": record_hash,
+                }
+            )
+            previous_hash = record_hash
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return {"new_scores": len(scored), "scores": scored, "skipped": skipped}
+
+
+def verify_ledger(ledger: str | Path) -> dict[str, object]:
+    connection = _connect(ledger)
+    errors = []
+    try:
+        previous_hash = GENESIS_HASH
+        forecasts = connection.execute(
+            "SELECT * FROM value_forecasts ORDER BY id"
+        ).fetchall()
+        forecast_hashes = {}
+        for row in forecasts:
+            expected = _forecast_hash(
+                created_at=str(row["created_at"]),
+                model_version=str(row["model_version"]),
+                game=str(row["game"]),
+                target_date=str(row["target_date"]),
+                training_last_date=str(row["training_last_date"]),
+                jackpot=float(row["jackpot"]),
+                estimated_ev=float(row["estimated_ev"]),
+                ev_ci_low=float(row["ev_ci_low"]),
+                ev_ci_high=float(row["ev_ci_high"]),
+                ticket_price=float(row["ticket_price"]),
+                decision=str(row["decision"]),
+                report_json=str(row["report_json"]),
+                previous_hash=previous_hash,
+            )
+            if str(row["previous_hash"]) != previous_hash or str(row["record_hash"]) != expected:
+                errors.append(f"forecast:{row['id']}")
+            try:
+                _validate_forecast_model_identity(
+                    row["model_version"],
+                    row["evaluation_cohort"],
+                    json.loads(str(row["report_json"])),
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                errors.append(f"forecast:{row['id']}:model_identity")
+            previous_hash = str(row["record_hash"])
+            forecast_hashes[int(row["id"])] = str(row["record_hash"])
+        forecast_head = previous_hash
+
+        previous_hash = GENESIS_HASH
+        scores = connection.execute("SELECT * FROM value_scores ORDER BY id").fetchall()
+        for row in scores:
+            metrics = _stored_score_metrics(row)
+            expected = _score_hash(
+                str(row["scored_at"]),
+                forecast_hashes.get(int(row["forecast_id"]), "missing"),
+                previous_hash,
+                str(row["draw_json"]),
+                metrics,
+                provenance_json=str(row["score_provenance_json"]),
+                hash_version=int(row["hash_version"]),
+            )
+            if str(row["previous_hash"]) != previous_hash or str(row["record_hash"]) != expected:
+                errors.append(f"score:{row['id']}")
+            previous_hash = str(row["record_hash"])
+        return {
+            "valid": not errors,
+            "errors": errors,
+            "forecasts": len(forecasts),
+            "scores": len(scores),
+            "forecast_head_hash": forecast_head,
+            "score_head_hash": previous_hash,
+        }
+    finally:
+        connection.close()
+
+
+def forecast_state(
+    ledger: str | Path,
+    game: str,
+    target_date: date,
+    *,
+    migrate: bool = True,
+) -> dict[str, object]:
+    target = Path(ledger)
+    if not target.exists():
+        return {"state": "missing", "forecast_id": None, "forecast_hash": None}
+    if migrate:
+        connection = _connect(target)
+    else:
+        connection = sqlite3.connect(f"{target.resolve().as_uri()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+    try:
+        forecast_columns = {
+            str(item["name"])
+            for item in connection.execute("PRAGMA table_info(value_forecasts)").fetchall()
+        }
+        cohort_expression = (
+            "f.evaluation_cohort" if "evaluation_cohort" in forecast_columns else "NULL"
+        )
+        row = connection.execute(
+            f"""
+            SELECT f.id AS forecast_id, f.record_hash AS forecast_hash,
+                   {cohort_expression} AS evaluation_cohort,
+                   s.id AS score_id, s.record_hash AS score_hash
+            FROM value_forecasts f
+            LEFT JOIN value_scores s ON s.forecast_id = f.id
+            WHERE f.game = ? AND f.target_date = ?
+            """,
+            (game, target_date.isoformat()),
+        ).fetchone()
+        if row is None:
+            return {"state": "missing", "forecast_id": None, "forecast_hash": None}
+        return {
+            "state": "scored" if row["score_id"] is not None else "pending",
+            "forecast_id": int(row["forecast_id"]),
+            "forecast_hash": str(row["forecast_hash"]),
+            "evaluation_cohort": (
+                str(row["evaluation_cohort"])
+                if row["evaluation_cohort"] is not None
+                else None
+            ),
+            "score_id": int(row["score_id"]) if row["score_id"] is not None else None,
+            "score_hash": str(row["score_hash"]) if row["score_hash"] else None,
+        }
+    finally:
+        connection.close()
+
+
+def _benchmark_cohort_summary(
+    evaluation_cohort: str, rows: list[Mapping[str, object]]
+) -> dict[str, object]:
+    model_mae = fmean(float(row["absolute_error"]) for row in rows)
+    naive_mae = fmean(float(row["naive_absolute_error"]) for row in rows)
+    mean_delta = fmean(float(row["absolute_error_delta"]) for row in rows)
+    summary: dict[str, object] = {
+        "evaluation_cohort": evaluation_cohort,
+        "model_versions": sorted(
+            {
+                str(row["model_version"])
+                for row in rows
+                if "model_version" in row.keys()
+            }
+        ),
+        "observations": len(rows),
+        "qualification_observations": PROSPECTIVE_QUALIFICATION_SCORES,
+        "remaining_before_qualification": max(
+            0, PROSPECTIVE_QUALIFICATION_SCORES - len(rows)
+        ),
+        "monitoring_model_mae": model_mae,
+        "monitoring_naive_mae": naive_mae,
+        "monitoring_mae_delta": mean_delta,
+        "monitoring_relative_mae_improvement": (
+            1 - model_mae / naive_mae if naive_mae else None
+        ),
+        "monitoring_coverage": fmean(int(row["covered"]) for row in rows),
+        "evaluation_model_mae": None,
+        "evaluation_naive_mae": None,
+        "evaluation_mae_delta": None,
+        "evaluation_relative_mae_improvement": None,
+        "mae_delta_ci_low": None,
+        "mae_delta_ci_high": None,
+        "permutation_p_value": None,
+        "evaluation_coverage": None,
+        "coverage_ci_low": None,
+        "coverage_ci_high": None,
+        "qualified_against_naive": False,
+        "coverage_compatible_with_target": False,
+        "value_model_qualified": False,
+        "qualification_status": "insufficient_data",
+    }
+    if len(rows) < PROSPECTIVE_QUALIFICATION_SCORES:
+        return summary
+
+    evaluation = rows[:PROSPECTIVE_QUALIFICATION_SCORES]
+    deltas = np.asarray(
+        [float(row["absolute_error_delta"]) for row in evaluation], dtype=float
+    )
+    coverage_values = np.asarray(
+        [int(row["covered"]) for row in evaluation], dtype=float
+    )
+    block_size = min(PROSPECTIVE_BLOCK_SIZE, len(evaluation))
+    rng = np.random.default_rng(PROSPECTIVE_INFERENCE_SEED)
+    bootstrap = _moving_block_means(
+        deltas, PROSPECTIVE_INFERENCE_SIMULATIONS, rng, block_size
+    )
+    observed_delta = float(deltas.mean())
+    extreme = 0
+    blocks_needed = math.ceil(len(deltas) / block_size)
+    for _ in range(PROSPECTIVE_INFERENCE_SIMULATIONS):
+        signs = np.repeat(rng.choice((-1.0, 1.0), size=blocks_needed), block_size)[
+            : len(deltas)
+        ]
+        if float((deltas * signs).mean()) <= observed_delta:
+            extreme += 1
+    delta_low = float(np.quantile(bootstrap, 0.025))
+    delta_high = float(np.quantile(bootstrap, 0.975))
+    p_value = (extreme + 1) / (PROSPECTIVE_INFERENCE_SIMULATIONS + 1)
+    coverage_rate = float(coverage_values.mean())
+    coverage_bootstrap = _moving_block_means(
+        coverage_values, PROSPECTIVE_INFERENCE_SIMULATIONS, rng, block_size
+    )
+    coverage_low = min(coverage_rate, float(np.quantile(coverage_bootstrap, 0.025)))
+    coverage_high = max(coverage_rate, float(np.quantile(coverage_bootstrap, 0.975)))
+    qualified_against_naive = delta_high < 0 and p_value < 0.05
+    coverage_compatible = coverage_low <= 0.95 <= coverage_high
+    qualified = qualified_against_naive and coverage_compatible
+    evaluation_model_mae = fmean(
+        float(row["absolute_error"]) for row in evaluation
+    )
+    evaluation_naive_mae = fmean(
+        float(row["naive_absolute_error"]) for row in evaluation
+    )
+    summary.update(
+        {
+            "evaluation_observations": len(evaluation),
+            "evaluation_model_mae": evaluation_model_mae,
+            "evaluation_naive_mae": evaluation_naive_mae,
+            "evaluation_mae_delta": observed_delta,
+            "evaluation_relative_mae_improvement": (
+                1 - evaluation_model_mae / evaluation_naive_mae
+                if evaluation_naive_mae
+                else None
+            ),
+            "mae_delta_ci_low": delta_low,
+            "mae_delta_ci_high": delta_high,
+            "permutation_p_value": p_value,
+            "evaluation_coverage": coverage_rate,
+            "coverage_ci_low": coverage_low,
+            "coverage_ci_high": coverage_high,
+            "qualified_against_naive": qualified_against_naive,
+            "coverage_compatible_with_target": coverage_compatible,
+            "value_model_qualified": qualified,
+            "qualification_status": "qualified" if qualified else "not_qualified",
+        }
+    )
+    return summary
+
+
+def ledger_info(ledger: str | Path) -> dict[str, object]:
+    connection = _connect(ledger)
+    try:
+        forecast_rows = connection.execute(
+            "SELECT target_date FROM value_forecasts ORDER BY id"
+        ).fetchall()
+        scores = connection.execute(
+            """
+            SELECT s.error, s.absolute_error, s.covered, s.false_positive,
+                   s.false_negative, s.naive_absolute_error, s.absolute_error_delta,
+                   s.metrics_version, f.model_version, f.evaluation_cohort
+            FROM value_scores s
+            JOIN value_forecasts f ON f.id = s.forecast_id
+            ORDER BY s.id
+            """
+        ).fetchall()
+        benchmark_rows = [row for row in scores if int(row["metrics_version"]) == 2]
+        cohorts: dict[str, list[sqlite3.Row]] = {}
+        for row in benchmark_rows:
+            cohort = (
+                str(row["evaluation_cohort"])
+                if row["evaluation_cohort"] is not None
+                else f"legacy:model-version:{row['model_version']}"
+            )
+            cohorts.setdefault(cohort, []).append(row)
+        cohort_summaries = [
+            _benchmark_cohort_summary(evaluation_cohort, rows)
+            for evaluation_cohort, rows in cohorts.items()
+        ]
+        verification = verify_ledger(ledger)
+        return {
+            **verification,
+            "pending": len(forecast_rows) - len(scores),
+            "first_target_date": str(forecast_rows[0]["target_date"]) if forecast_rows else None,
+            "last_target_date": str(forecast_rows[-1]["target_date"]) if forecast_rows else None,
+            "mean_bias": (
+                fmean(float(row["error"]) for row in scores) if scores else None
+            ),
+            "mae": (
+                fmean(float(row["absolute_error"]) for row in scores) if scores else None
+            ),
+            "coverage": (
+                fmean(int(row["covered"]) for row in scores) if scores else None
+            ),
+            "false_positives": sum(int(row["false_positive"]) for row in scores),
+            "false_negatives": sum(int(row["false_negative"]) for row in scores),
+            "benchmark_observations": len(benchmark_rows),
+            "benchmark_model_mae": (
+                fmean(float(row["absolute_error"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "naive_mae": (
+                fmean(float(row["naive_absolute_error"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "mae_delta": (
+                fmean(float(row["absolute_error_delta"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "qualification_protocol": (
+                "Verdict fige sur les 100 premiers scores de chaque empreinte scientifique, "
+                "avec bootstrap et permutation par blocs de 12."
+            ),
+            "qualification_cohorts": cohort_summaries,
+            "interpretation": (
+                "Publier forecast_head_hash avant le tirage, puis score_head_hash apres scoring."
+            ),
+        }
+    finally:
+        connection.close()
+
+
+def export_ledger_evidence(ledger: str | Path) -> dict[str, object]:
+    verification = verify_ledger(ledger)
+    if not verification["valid"]:
+        raise ValueError("Le registre est invalide; export refuse")
+    connection = _connect(ledger)
+    try:
+        forecasts = []
+        for row in connection.execute("SELECT * FROM value_forecasts ORDER BY id"):
+            forecasts.append(
+                {
+                    "id": int(row["id"]),
+                    "created_at": str(row["created_at"]),
+                    "model_version": str(row["model_version"]),
+                    "evaluation_cohort": (
+                        str(row["evaluation_cohort"])
+                        if row["evaluation_cohort"] is not None
+                        else None
+                    ),
+                    "game": str(row["game"]),
+                    "target_date": str(row["target_date"]),
+                    "training_last_date": str(row["training_last_date"]),
+                    "jackpot": float(row["jackpot"]),
+                    "estimated_ev": float(row["estimated_ev"]),
+                    "ev_ci_low": float(row["ev_ci_low"]),
+                    "ev_ci_high": float(row["ev_ci_high"]),
+                    "ticket_price": float(row["ticket_price"]),
+                    "decision": str(row["decision"]),
+                    "payload": json.loads(str(row["report_json"])),
+                    "previous_hash": str(row["previous_hash"]),
+                    "record_hash": str(row["record_hash"]),
+                }
+            )
+        scores = []
+        for row in connection.execute("SELECT * FROM value_scores ORDER BY id"):
+            scores.append(
+                {
+                    "id": int(row["id"]),
+                    "forecast_id": int(row["forecast_id"]),
+                    "scored_at": str(row["scored_at"]),
+                    **_stored_score_metrics(row),
+                    "metrics_version": int(row["metrics_version"]),
+                    "draw": json.loads(str(row["draw_json"])),
+                    "provenance": json.loads(str(row["score_provenance_json"])),
+                    "hash_version": int(row["hash_version"]),
+                    "previous_hash": str(row["previous_hash"]),
+                    "record_hash": str(row["record_hash"]),
+                }
+            )
+        return {
+            "format": EVIDENCE_FORMAT,
+            "schema_version": EVIDENCE_SCHEMA_VERSION,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "forecasts": forecasts,
+            "scores": scores,
+            "ledger": ledger_info(ledger),
+        }
+    finally:
+        connection.close()
+
+
+def _draw_from_evidence(payload: dict[str, object]) -> Draw:
+    draw_date = payload.get("draw_date")
+    return Draw(
+        tuple(int(number) for number in payload["main"]),  # type: ignore[arg-type]
+        int(payload["chance"]),
+        date.fromisoformat(str(draw_date)) if draw_date else None,
+        str(payload["game"]),
+        tuple(
+            PrizeResult(
+                int(prize["rank"]),
+                int(prize["winners"]) if prize.get("winners") is not None else None,
+                float(prize["payout"]) if prize.get("payout") is not None else None,
+            )
+            for prize in payload["prizes"]  # type: ignore[union-attr]
+        ),
+        int(payload["code_winners"]) if payload.get("code_winners") is not None else None,
+        float(payload["code_payout"]) if payload.get("code_payout") is not None else None,
+    )
+
+
+def _same_number(left: float, right: float) -> bool:
+    return math.isclose(left, right, rel_tol=1e-12, abs_tol=1e-12)
+
+
+def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
+    errors: list[str] = []
+    if evidence.get("format") != EVIDENCE_FORMAT:
+        errors.append("format")
+    if evidence.get("schema_version") not in SUPPORTED_EVIDENCE_SCHEMA_VERSIONS:
+        errors.append("schema_version")
+    forecasts_value = evidence.get("forecasts")
+    scores_value = evidence.get("scores")
+    if not isinstance(forecasts_value, list):
+        errors.append("forecasts")
+        forecasts_value = []
+    if not isinstance(scores_value, list):
+        errors.append("scores")
+        scores_value = []
+
+    previous_hash = GENESIS_HASH
+    forecast_hashes: dict[int, str] = {}
+    forecast_records: dict[int, dict[str, object]] = {}
+    targets: set[tuple[str, str]] = set()
+    for index, item in enumerate(forecasts_value, start=1):
+        label = f"forecast:{index}"
+        if not isinstance(item, dict):
+            errors.append(f"{label}:malformed")
+            continue
+        try:
+            forecast_id = int(item["id"])
+            payload = item["payload"]
+            if not isinstance(payload, dict):
+                raise TypeError
+            record_hash = str(item["record_hash"])
+            expected = _forecast_hash(
+                created_at=str(item["created_at"]),
+                model_version=str(item["model_version"]),
+                game=str(item["game"]),
+                target_date=str(item["target_date"]),
+                training_last_date=str(item["training_last_date"]),
+                jackpot=float(item["jackpot"]),
+                estimated_ev=float(item["estimated_ev"]),
+                ev_ci_low=float(item["ev_ci_low"]),
+                ev_ci_high=float(item["ev_ci_high"]),
+                ticket_price=float(item["ticket_price"]),
+                decision=str(item["decision"]),
+                report_json=_canonical_json(payload),
+                previous_hash=previous_hash,
+            )
+            if str(item["previous_hash"]) != previous_hash or record_hash != expected:
+                errors.append(f"{label}:hash")
+            if forecast_id in forecast_hashes:
+                errors.append(f"{label}:duplicate_id")
+            target = (str(item["game"]), str(item["target_date"]))
+            if target in targets:
+                errors.append(f"{label}:duplicate_target")
+            created_at = datetime.fromisoformat(str(item["created_at"]))
+            target_date = date.fromisoformat(target[1])
+            training_last_date = date.fromisoformat(str(item["training_last_date"]))
+            if (
+                created_at.tzinfo is None
+                or not _recording_is_open(target_date, created_at)
+                or training_last_date >= target_date
+            ):
+                errors.append(f"{label}:chronology")
+            report = payload.get("report")
+            if not isinstance(report, dict):
+                errors.append(f"{label}:report")
+            else:
+                comparisons = {
+                    "game": str(item["game"]),
+                    "target_date": str(item["target_date"]),
+                    "training_last_date": str(item["training_last_date"]),
+                    "decision": str(item["decision"]),
+                }
+                if any(str(report.get(key)) != value for key, value in comparisons.items()):
+                    errors.append(f"{label}:report_mismatch")
+                numeric_comparisons = {
+                    "jackpot": float(item["jackpot"]),
+                    "estimated_ev": float(item["estimated_ev"]),
+                    "ev_ci_low": float(item["ev_ci_low"]),
+                    "ev_ci_high": float(item["ev_ci_high"]),
+                    "ticket_price": float(item["ticket_price"]),
+                }
+                if any(
+                    not _same_number(float(report.get(key)), value)
+                    for key, value in numeric_comparisons.items()
+                ):
+                    errors.append(f"{label}:report_mismatch")
+            if _uses_hashed_provenance(item["model_version"]):
+                provenance = payload.get("provenance")
+                if not isinstance(provenance, dict):
+                    errors.append(f"{label}:provenance")
+                else:
+                    try:
+                        _validate_official_source(provenance.get("jackpot_source"))
+                    except ValueError:
+                        errors.append(f"{label}:jackpot_source")
+                    try:
+                        _validate_data_provenance(provenance.get("data"))
+                    except ValueError:
+                        errors.append(f"{label}:data_provenance")
+            try:
+                _validate_forecast_model_identity(
+                    item["model_version"],
+                    item.get("evaluation_cohort"),
+                    payload,
+                )
+            except ValueError:
+                errors.append(f"{label}:model_identity")
+            if _model_version_at_least(item["model_version"], (0, 10)):
+                if not isinstance(report, dict) or report.get("naive_ev") is None:
+                    errors.append(f"{label}:naive_ev")
+                else:
+                    expected_naive = float(report["lower_rank_ev"]) + (
+                        rank_probabilities()[0].probability * float(report["jackpot"])
+                    )
+                    if not _same_number(float(report["naive_ev"]), expected_naive):
+                        errors.append(f"{label}:naive_ev")
+            forecast_hashes[forecast_id] = record_hash
+            forecast_records[forecast_id] = item
+            targets.add(target)
+            previous_hash = record_hash
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{label}:malformed")
+    forecast_head = previous_hash
+
+    previous_hash = GENESIS_HASH
+    scored_forecasts: set[int] = set()
+    score_ids: set[int] = set()
+    for index, item in enumerate(scores_value, start=1):
+        label = f"score:{index}"
+        if not isinstance(item, dict):
+            errors.append(f"{label}:malformed")
+            continue
+        try:
+            score_id = int(item["id"])
+            forecast_id = int(item["forecast_id"])
+            forecast = forecast_records[forecast_id]
+            metrics: dict[str, float | int] = {
+                "observed_schedule_ev": float(item["observed_schedule_ev"]),
+                "error": float(item["error"]),
+                "absolute_error": float(item["absolute_error"]),
+                "covered": int(item["covered"]),
+                "observed_positive": int(item["observed_positive"]),
+                "false_positive": int(item["false_positive"]),
+                "false_negative": int(item["false_negative"]),
+            }
+            metrics_version = int(item.get("metrics_version", 1))
+            if metrics_version == 2:
+                metrics.update(
+                    {
+                        "metrics_version": metrics_version,
+                        "naive_ev": float(item["naive_ev"]),
+                        "naive_error": float(item["naive_error"]),
+                        "naive_absolute_error": float(item["naive_absolute_error"]),
+                        "absolute_error_delta": float(item["absolute_error_delta"]),
+                    }
+                )
+            elif metrics_version != 1:
+                errors.append(f"{label}:metrics_version")
+            draw_payload = item["draw"]
+            if not isinstance(draw_payload, dict):
+                raise TypeError
+            hash_version = int(item.get("hash_version", 1))
+            provenance = item.get("provenance", {})
+            if not isinstance(provenance, dict):
+                raise TypeError
+            provenance_json = _canonical_json(provenance)
+            record_hash = str(item["record_hash"])
+            expected = _score_hash(
+                str(item["scored_at"]),
+                forecast_hashes[forecast_id],
+                previous_hash,
+                _canonical_json(draw_payload),
+                metrics,
+                provenance_json=provenance_json,
+                hash_version=hash_version,
+            )
+            if str(item["previous_hash"]) != previous_hash or record_hash != expected:
+                errors.append(f"{label}:hash")
+            if forecast_id in scored_forecasts:
+                errors.append(f"{label}:duplicate_forecast")
+            if score_id in score_ids:
+                errors.append(f"{label}:duplicate_id")
+            if hash_version == 2:
+                try:
+                    _validate_official_source(provenance.get("result_source"))
+                except ValueError:
+                    errors.append(f"{label}:result_source")
+                try:
+                    _validate_data_provenance(provenance.get("data"))
+                except ValueError:
+                    errors.append(f"{label}:data_provenance")
+            draw = _draw_from_evidence(draw_payload)
+            scored_at = datetime.fromisoformat(str(item["scored_at"]))
+            target_date = date.fromisoformat(str(forecast["target_date"]))
+            if scored_at.tzinfo is None or _recording_is_open(target_date, scored_at):
+                errors.append(f"{label}:chronology")
+            if draw.game != forecast["game"] or draw.draw_date != target_date:
+                errors.append(f"{label}:draw_target")
+            observed_ev = _observed_schedule_ev(draw)
+            if observed_ev is None:
+                errors.append(f"{label}:incomplete_draw")
+            else:
+                estimated_ev = float(forecast["estimated_ev"])
+                ticket_price = float(forecast["ticket_price"])
+                eligible = str(forecast["decision"]) == "eligible"
+                observed_positive = observed_ev > ticket_price
+                expected_metrics: dict[str, float | int] = {
+                    "observed_schedule_ev": observed_ev,
+                    "error": estimated_ev - observed_ev,
+                    "absolute_error": abs(estimated_ev - observed_ev),
+                    "covered": int(
+                        float(forecast["ev_ci_low"])
+                        <= observed_ev
+                        <= float(forecast["ev_ci_high"])
+                    ),
+                    "observed_positive": int(observed_positive),
+                    "false_positive": int(eligible and not observed_positive),
+                    "false_negative": int(not eligible and observed_positive),
+                }
+                if metrics_version == 2:
+                    forecast_payload = forecast.get("payload")
+                    report_payload = (
+                        forecast_payload.get("report")
+                        if isinstance(forecast_payload, dict)
+                        else None
+                    )
+                    naive_value = (
+                        report_payload.get("naive_ev")
+                        if isinstance(report_payload, dict)
+                        else None
+                    )
+                    if naive_value is None:
+                        errors.append(f"{label}:missing_naive_forecast")
+                    else:
+                        naive_ev = float(naive_value)
+                        naive_error = naive_ev - observed_ev
+                        expected_metrics.update(
+                            {
+                                "metrics_version": metrics_version,
+                                "naive_ev": naive_ev,
+                                "naive_error": naive_error,
+                                "naive_absolute_error": abs(naive_error),
+                                "absolute_error_delta": expected_metrics["absolute_error"]
+                                - abs(naive_error),
+                            }
+                        )
+                for key, expected_value in expected_metrics.items():
+                    actual = metrics[key]
+                    matches = (
+                        _same_number(float(actual), float(expected_value))
+                        if isinstance(expected_value, float)
+                        else actual == expected_value
+                    )
+                    if not matches:
+                        errors.append(f"{label}:metric:{key}")
+            scored_forecasts.add(forecast_id)
+            score_ids.add(score_id)
+            previous_hash = record_hash
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{label}:malformed")
+    score_head = previous_hash
+
+    manifest = evidence.get("ledger")
+    if not isinstance(manifest, dict):
+        errors.append("ledger")
+    else:
+        expected_manifest = {
+            "forecasts": len(forecasts_value),
+            "scores": len(scores_value),
+            "forecast_head_hash": forecast_head,
+            "score_head_hash": score_head,
+        }
+        if any(manifest.get(key) != value for key, value in expected_manifest.items()):
+            errors.append("ledger:mismatch")
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "forecasts": len(forecasts_value),
+        "scores": len(scores_value),
+        "forecast_head_hash": forecast_head,
+        "score_head_hash": score_head,
+    }

@@ -17,6 +17,7 @@ from .data import (
 from .database import build_database, database_info
 from .domain import DEFAULT_RULES, LotteryRules
 from .ml import nested_ml_backtest, predict_next_draw
+from .model_identity import build_model_specification
 from .models import SmoothedFrequencyPredictor, standard_backtests
 from .participation import participation_backtest
 from .probability import (
@@ -25,10 +26,24 @@ from .probability import (
     rank_probabilities,
     total_outcomes,
 )
+from .prospective import (
+    build_data_provenance,
+    export_ledger_evidence,
+    ledger_info,
+    record_value_forecast,
+    score_pending_forecasts,
+    verify_evidence,
+)
 from .simulation import load_payouts, simulate_bankroll
 from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequency_outliers
 from .strategy import anti_crowd_score, generate_tickets
 from .value import estimate_value
+from .value_backtest import backtest_value
+from .workflow import (
+    run_prospective_cycle,
+    verify_operation_journal,
+    write_json_atomic,
+)
 
 
 def _print_json(value: object) -> None:
@@ -118,18 +133,17 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
         outer_folds=args.folds,
         simulations=args.simulations,
         seed=args.seed,
+        game=args.game,
     )
     payload = {
+        "game": args.game,
         "results": [result.to_dict() for result in results],
         "decision": (
             "model_available" if any(result.qualified for result in results) else "abstention"
         ),
     }
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-        )
+        write_json_atomic(args.output, payload)
     _print_json(payload)
 
 
@@ -142,6 +156,7 @@ def command_ml_predict(args: argparse.Namespace) -> None:
         outer_folds=args.folds,
         simulations=args.simulations,
         seed=args.seed,
+        game=args.game,
     )
     _print_json(
         predict_next_draw(
@@ -171,6 +186,96 @@ def command_value(args: argparse.Namespace) -> None:
     )
 
 
+def command_value_record(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    target_date = date.fromisoformat(args.date)
+    if any(draw.game == args.game and draw.draw_date == target_date for draw in draws):
+        raise SystemExit("Le tirage cible est deja present: enregistrement retrospectif refuse")
+    report = estimate_value(
+        draws,
+        jackpot=args.jackpot,
+        game=args.game,
+        expected_co_winners=None,
+        target_date=target_date,
+        bootstrap_simulations=args.simulations,
+        seed=args.seed,
+    )
+    provenance = {
+        "data": build_data_provenance(args.data, draws),
+        "jackpot_source": args.jackpot_source,
+        "bootstrap_simulations": args.simulations,
+        "seed": args.seed,
+        "model_specification": build_model_specification(
+            game=args.game,
+            bootstrap_simulations=args.simulations,
+            seed=args.seed,
+        ),
+    }
+    payload = {
+        "record": record_value_forecast(
+            args.ledger, report, provenance=provenance
+        ),
+        "report": report.to_dict(),
+        "provenance": provenance,
+        "ledger": ledger_info(args.ledger),
+    }
+    if args.export:
+        write_json_atomic(args.export, payload)
+    _print_json(payload)
+
+
+def command_value_score(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    provenance = {
+        "data": build_data_provenance(args.data, draws),
+        "result_source": args.result_source,
+    }
+    payload = {
+        **score_pending_forecasts(args.ledger, draws, provenance=provenance),
+        "ledger": ledger_info(args.ledger),
+    }
+    if args.export:
+        evidence = export_ledger_evidence(args.ledger)
+        write_json_atomic(args.export, evidence)
+        payload["evidence_export"] = str(args.export)
+        payload["evidence_verification"] = verify_evidence(evidence)
+    _print_json(payload)
+
+
+def command_ledger_info(args: argparse.Namespace) -> None:
+    _print_json(ledger_info(args.ledger))
+
+
+def command_ledger_export(args: argparse.Namespace) -> None:
+    evidence = export_ledger_evidence(args.ledger)
+    write_json_atomic(args.output, evidence)
+    _print_json({"output": str(args.output), **verify_evidence(evidence)})
+
+
+def command_ledger_verify(args: argparse.Namespace) -> None:
+    try:
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Preuve illisible: {error}") from error
+    if not isinstance(evidence, dict):
+        raise SystemExit("Preuve invalide: la racine JSON doit etre un objet")
+    result = verify_evidence(evidence)
+    _print_json(result)
+    if not result["valid"]:
+        raise SystemExit(1)
+
+
+def command_prospective_run(args: argparse.Namespace) -> None:
+    _print_json(run_prospective_cycle(args.manifest, dry_run=args.dry_run))
+
+
+def command_prospective_journal_verify(args: argparse.Namespace) -> None:
+    result = verify_operation_journal(args.journal)
+    _print_json(result)
+    if not result["valid"]:
+        raise SystemExit(1)
+
+
 def command_participation_backtest(args: argparse.Namespace) -> None:
     draws = load_draws_many(args.data)
     _print_json(
@@ -184,6 +289,22 @@ def command_participation_backtest(args: argparse.Namespace) -> None:
                 seed=args.seed,
             )
         ]
+    )
+
+
+def command_value_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    _print_json(
+        backtest_value(
+            draws,
+            game=args.game,
+            min_train=args.min_train,
+            folds=args.folds,
+            simulations=args.simulations,
+            seed=args.seed,
+            block_size=args.block_size,
+            refit_interval=args.refit_interval,
+        ).to_dict()
     )
 
 
@@ -287,6 +408,9 @@ def build_parser() -> argparse.ArgumentParser:
     ml_backtest.add_argument("--folds", type=int, default=3)
     ml_backtest.add_argument("--simulations", type=int, default=2_000)
     ml_backtest.add_argument("--seed", type=int, default=0)
+    ml_backtest.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
     ml_backtest.add_argument("--output", type=Path)
     ml_backtest.set_defaults(handler=command_ml_backtest)
 
@@ -317,6 +441,32 @@ def build_parser() -> argparse.ArgumentParser:
     participation.add_argument("--seed", type=int, default=0)
     participation.set_defaults(handler=command_participation_backtest)
 
+    value_backtest = subparsers.add_parser(
+        "value-backtest",
+        help="Valider chronologiquement le moteur d'esperance monetaire",
+    )
+    value_backtest.add_argument("data", type=Path, nargs="+")
+    value_backtest.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    value_backtest.add_argument("--min-train", type=int, default=500)
+    value_backtest.add_argument("--folds", type=int, default=3)
+    value_backtest.add_argument("--simulations", type=int, default=500)
+    value_backtest.add_argument("--seed", type=int, default=0)
+    value_backtest.add_argument(
+        "--block-size",
+        type=int,
+        default=12,
+        help="Longueur des blocs temporels pour l'inference statistique",
+    )
+    value_backtest.add_argument(
+        "--refit-interval",
+        type=int,
+        default=52,
+        help="Nombre de dates entre deux reentrainements walk-forward",
+    )
+    value_backtest.set_defaults(handler=command_value_backtest)
+
     value = subparsers.add_parser(
         "value", help="Estimer l'esperance monetaire d'un jackpot annonce"
     )
@@ -336,6 +486,86 @@ def build_parser() -> argparse.ArgumentParser:
     value.add_argument("--simulations", type=int, default=2_000)
     value.add_argument("--seed", type=int, default=0)
     value.set_defaults(handler=command_value)
+
+    value_record = subparsers.add_parser(
+        "value-record",
+        help="Figer une estimation de valeur prospective avant le tirage",
+    )
+    value_record.add_argument("data", type=Path, nargs="+")
+    value_record.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_record.add_argument("--jackpot", type=float, required=True)
+    value_record.add_argument(
+        "--jackpot-source",
+        required=True,
+        help="URL publique horodatable qui confirme le jackpot annonce",
+    )
+    value_record.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    value_record.add_argument("--date", default=date.today().isoformat())
+    value_record.add_argument("--simulations", type=int, default=2_000)
+    value_record.add_argument("--seed", type=int, default=0)
+    value_record.add_argument("--export", type=Path)
+    value_record.set_defaults(handler=command_value_record)
+
+    value_score = subparsers.add_parser(
+        "value-score",
+        help="Noter les previsions figees dont le tirage est disponible",
+    )
+    value_score.add_argument("data", type=Path, nargs="+")
+    value_score.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_score.add_argument(
+        "--result-source",
+        required=True,
+        help="URL HTTPS FDJ du resultat et du bareme officiels",
+    )
+    value_score.add_argument(
+        "--export",
+        type=Path,
+        help="Exporter un bundle autonome apres le scoring",
+    )
+    value_score.set_defaults(handler=command_value_score)
+
+    ledger = subparsers.add_parser(
+        "ledger-info",
+        help="Verifier la chaine de hachage et les metriques prospectives",
+    )
+    ledger.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    ledger.set_defaults(handler=command_ledger_info)
+
+    ledger_export = subparsers.add_parser(
+        "ledger-export",
+        help="Exporter toutes les preuves du registre dans un bundle JSON",
+    )
+    ledger_export.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    ledger_export.add_argument("--output", type=Path, required=True)
+    ledger_export.set_defaults(handler=command_ledger_export)
+
+    ledger_verify = subparsers.add_parser(
+        "ledger-verify",
+        help="Verifier un bundle prospectif sans acceder a la base SQLite",
+    )
+    ledger_verify.add_argument("evidence", type=Path)
+    ledger_verify.set_defaults(handler=command_ledger_verify)
+
+    prospective_run = subparsers.add_parser(
+        "prospective-run",
+        help="Executer idempotemment un manifeste prospectif",
+    )
+    prospective_run.add_argument("manifest", type=Path)
+    prospective_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Valider et calculer le plan sans modifier aucun fichier",
+    )
+    prospective_run.set_defaults(handler=command_prospective_run)
+
+    journal_verify = subparsers.add_parser(
+        "prospective-journal-verify",
+        help="Verifier la chaine du journal d'execution prospectif",
+    )
+    journal_verify.add_argument("journal", type=Path)
+    journal_verify.set_defaults(handler=command_prospective_journal_verify)
 
     generate = subparsers.add_parser("generate", help="Generer des grilles distinctes")
     generate.add_argument("--count", type=int, default=5)

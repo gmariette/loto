@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "data": [
+    "../data/loto.sqlite"
+  ],
+  "ledger": "../data/prospective.sqlite",
+  "evidence": "../evidence/prospective-ledger.json",
+  "journal": "../data/prospective-operations.jsonl",
+  "game": "loto",
+  "target_date": "2026-08-03",
+  "jackpot": 5000000,
+  "jackpot_source": "https://www.fdj.fr/jeux-de-tirage/loto/resultats/...",
+  "result_source": null,
+  "simulations": 2000,
+  "seed": 42
+}

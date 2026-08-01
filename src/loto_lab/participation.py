@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from math import exp, log
@@ -50,6 +50,9 @@ class ParticipationBacktestResult:
     delta_ci_high: float
     permutation_p_value: float
     adjusted_p_value: float
+    calibration_factors: tuple[float, ...]
+    raw_level_bias_rate: float
+    calibrated_level_bias_rate: float
     qualified: bool
 
     def to_dict(self) -> dict[str, object]:
@@ -64,12 +67,77 @@ class ParticipationForecast:
     observations: int
     model: str
     parameters: dict[str, float | int]
+    median_estimated_tickets: float
     estimated_tickets: float
+    smearing_factor: float
     backtest_log_rmse: float
     baseline_log_rmse: float
+    training_jackpot_min: float
+    training_jackpot_max: float
+    extrapolated: bool
+    uncertainty_method: str
+    residual_observations: int
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
+
+
+@dataclass(slots=True)
+class ParticipationForecaster:
+    observations: tuple[ParticipationObservation, ...]
+    champion: ParticipationBacktestResult
+    model: Any | None
+    smearing_factor: float
+    ticket_multipliers: tuple[float, ...]
+
+    def forecast(
+        self, jackpot: float, target_date: date, game: str = "loto"
+    ) -> ParticipationForecast:
+        if jackpot <= 0:
+            raise ValueError("Le jackpot doit etre positif")
+        last_training_date = max(item.draw_date for item in self.observations)
+        if target_date <= last_training_date:
+            raise ValueError(
+                "La date cible doit etre posterieure aux observations d'apprentissage"
+            )
+        target = ParticipationObservation(target_date, game, jackpot, 0, 0)
+        observations = list(self.observations)
+        if self.model is not None:
+            log_estimate = float(
+                self.model.predict(_features([target], observations[0].draw_date))[0]
+            )
+            median_estimate = exp(log_estimate)
+            model_name = self.champion.model
+            parameters = self.champion.final_parameters
+        else:
+            median_estimate = float(exp(_baseline_predictions(observations, [target])[0]))
+            model_name = "segmented_median"
+            parameters = {}
+        game_jackpots = [item.jackpot for item in observations if item.game == game]
+        support = game_jackpots or [item.jackpot for item in observations]
+        support_min = min(support)
+        support_max = max(support)
+        return ParticipationForecast(
+            game,
+            target_date,
+            jackpot,
+            len(observations),
+            model_name,
+            parameters,
+            median_estimate,
+            median_estimate * self.smearing_factor,
+            self.smearing_factor,
+            self.champion.log_rmse,
+            self.champion.baseline_log_rmse,
+            support_min,
+            support_max,
+            jackpot < support_min or jackpot > support_max,
+            "temporal_empirical_residuals",
+            len(self.ticket_multipliers),
+        )
+
+    def sample_ticket_multiplier(self, rng: Any) -> float:
+        return float(rng.choice(self.ticket_multipliers))
 
 
 def participation_observations(draws: list[Draw]) -> list[ParticipationObservation]:
@@ -93,12 +161,19 @@ def participation_observations(draws: list[Draw]) -> list[ParticipationObservati
             ParticipationObservation(
                 draw.draw_date,
                 draw.game,
-                rank_1.payout,
+                _advertised_jackpot(draw),
                 rank_9.winners,
                 rank_9.winners / rank_9_probability,
             )
         )
     return sorted(observations, key=lambda item: (item.draw_date, item.game))
+
+
+def _advertised_jackpot(draw: Draw) -> float:
+    rank_1 = next(prize for prize in draw.prizes if prize.rank == 1)
+    assert rank_1.payout is not None
+    winners = rank_1.winners or 0
+    return rank_1.payout * winners if winners > 1 else rank_1.payout
 
 
 def _features(
@@ -191,6 +266,28 @@ def _select_parameters(
     return best[1]
 
 
+def _smearing_factor(
+    observations: list[ParticipationObservation],
+    x: np.ndarray,
+    y: np.ndarray,
+    train_indices: np.ndarray,
+    model_name: str,
+    parameters: dict[str, float | int],
+    seed: int,
+) -> float:
+    dates = np.asarray([item.draw_date for item in observations], dtype=object)
+    train_dates = np.unique(dates[train_indices])
+    validation_dates = train_dates[max(1, int(len(train_dates) * 0.8)) :]
+    if not len(validation_dates):
+        return 1.0
+    split_date = validation_dates[0]
+    inner_train = train_indices[dates[train_indices] < split_date]
+    validation = train_indices[dates[train_indices] >= split_date]
+    model = _fit_model(model_name, parameters, x[inner_train], y[inner_train], seed)
+    residuals = y[validation] - model.predict(x[validation])
+    return float(np.mean(np.exp(residuals)))
+
+
 def participation_backtest(
     draws: list[Draw],
     min_train: int = 500,
@@ -213,6 +310,8 @@ def participation_backtest(
         baselines = []
         actuals = []
         selected = []
+        calibration_factors = []
+        fold_calibration_factors = []
         for fold_number, test_dates in enumerate(date_folds):
             train_indices = np.flatnonzero(dates < test_dates[0])
             test_indices = np.flatnonzero(np.isin(dates, test_dates))
@@ -231,6 +330,15 @@ def participation_backtest(
                 y[train_indices],
                 seed + model_number * 1000 + fold_number,
             )
+            calibration_factor = _smearing_factor(
+                observations,
+                x,
+                y,
+                train_indices,
+                model_name,
+                parameters,
+                seed + model_number * 1000 + fold_number,
+            )
             predictions.extend(model.predict(x[test_indices]))
             baselines.extend(
                 _baseline_predictions(
@@ -240,9 +348,12 @@ def participation_backtest(
             )
             actuals.extend(y[test_indices])
             selected.append(parameters)
+            calibration_factors.extend([calibration_factor] * len(test_indices))
+            fold_calibration_factors.append(calibration_factor)
         predicted = np.asarray(predictions)
         baseline = np.asarray(baselines)
         actual = np.asarray(actuals)
+        calibration = np.asarray(calibration_factors)
         rmse = float(np.sqrt(np.mean((predicted - actual) ** 2)))
         baseline_rmse = float(np.sqrt(np.mean((baseline - actual) ** 2)))
         deltas = (predicted - actual) ** 2 - (baseline - actual) ** 2
@@ -257,9 +368,12 @@ def participation_backtest(
             if float((deltas * signs).mean()) <= observed_delta:
                 extreme += 1
         p_value = (extreme + 1) / (simulations + 1)
-        serialized = [tuple(sorted(item.items())) for item in selected]
-        final_serialized = Counter(serialized).most_common(1)[0][0]
-        final_parameters = dict(final_serialized)
+        final_parameters = _select_parameters(
+            observations, x, y, np.arange(len(observations)), model_name, seed + folds
+        )
+        raw_levels = np.exp(predicted)
+        calibrated_levels = raw_levels * calibration
+        actual_levels = np.exp(actual)
         results.append(
             ParticipationBacktestResult(
                 model_name,
@@ -278,6 +392,11 @@ def participation_backtest(
                 float(np.quantile(bootstrap, 0.975)),
                 p_value,
                 1.0,
+                tuple(fold_calibration_factors),
+                float((raw_levels.sum() - actual_levels.sum()) / actual_levels.sum()),
+                float(
+                    (calibrated_levels.sum() - actual_levels.sum()) / actual_levels.sum()
+                ),
                 False,
             )
         )
@@ -298,6 +417,83 @@ def participation_backtest(
     ]
 
 
+def _temporal_ticket_multipliers(
+    observations: list[ParticipationObservation],
+    champion: ParticipationBacktestResult,
+    min_train: int,
+    folds: int,
+    seed: int,
+) -> tuple[float, ...]:
+    reference_date = observations[0].draw_date
+    x = _features(observations, reference_date)
+    y = np.log([item.estimated_tickets for item in observations])
+    dates = np.asarray([item.draw_date for item in observations], dtype=object)
+    eligible_dates = np.unique(dates[min_train:])
+    date_folds = [item for item in np.array_split(eligible_dates, folds) if len(item)]
+    residuals = []
+    model_seed_offset = (
+        list(MODEL_PARAMETERS).index(champion.model) * 1000 if champion.qualified else 0
+    )
+    for fold_number, test_dates in enumerate(date_folds):
+        train_indices = np.flatnonzero(dates < test_dates[0])
+        test_indices = np.flatnonzero(np.isin(dates, test_dates))
+        if champion.qualified:
+            model = _fit_model(
+                champion.model,
+                champion.selected_parameters[fold_number],
+                x[train_indices],
+                y[train_indices],
+                seed + model_seed_offset + fold_number,
+            )
+            predicted = model.predict(x[test_indices])
+        else:
+            predicted = _baseline_predictions(
+                [observations[index] for index in train_indices],
+                [observations[index] for index in test_indices],
+            )
+        residuals.extend(y[test_indices] - predicted)
+    level_errors = np.exp(np.asarray(residuals))
+    normalized = level_errors / level_errors.mean()
+    return tuple(float(value) for value in normalized)
+
+
+def fit_participation_forecaster(
+    draws: list[Draw],
+    min_train: int = 500,
+    folds: int = 3,
+    simulations: int = 2_000,
+    seed: int = 0,
+) -> ParticipationForecaster:
+    observations = participation_observations(draws)
+    results = participation_backtest(draws, min_train, folds, simulations, seed)
+    qualified = [result for result in results if result.qualified]
+    champion = min(qualified or results, key=lambda result: result.log_rmse)
+    if qualified:
+        x = _features(observations, observations[0].draw_date)
+        y = np.log([item.estimated_tickets for item in observations])
+        indices = np.arange(len(observations))
+        final_seed = seed + folds
+        calibration = _smearing_factor(
+            observations,
+            x,
+            y,
+            indices,
+            champion.model,
+            champion.final_parameters,
+            final_seed,
+        )
+        model = _fit_model(champion.model, champion.final_parameters, x, y, final_seed)
+    else:
+        calibration = 1.0
+        model = None
+    multipliers = _temporal_ticket_multipliers(
+        observations, champion, min_train, folds, seed
+    )
+    return ParticipationForecaster(
+        tuple(observations), champion, model, calibration, multipliers
+    )
+
+
 def forecast_participation(
     draws: list[Draw],
     jackpot: float,
@@ -308,32 +504,10 @@ def forecast_participation(
     simulations: int = 2_000,
     seed: int = 0,
 ) -> ParticipationForecast:
-    if jackpot <= 0:
-        raise ValueError("Le jackpot doit etre positif")
-    observations = participation_observations(draws)
-    results = participation_backtest(draws, min_train, folds, simulations, seed)
-    qualified = [result for result in results if result.qualified]
-    champion = min(qualified or results, key=lambda result: result.log_rmse)
-    target = ParticipationObservation(target_date, game, jackpot, 0, 0)
-    if qualified:
-        x = _features(observations, observations[0].draw_date)
-        y = np.log([item.estimated_tickets for item in observations])
-        model = _fit_model(champion.model, champion.final_parameters, x, y, seed)
-        estimate = float(exp(model.predict(_features([target], observations[0].draw_date))[0]))
-        model_name = champion.model
-        parameters = champion.final_parameters
-    else:
-        estimate = float(exp(_baseline_predictions(observations, [target])[0]))
-        model_name = "segmented_median"
-        parameters = {}
-    return ParticipationForecast(
-        game,
-        target_date,
-        jackpot,
-        len(observations),
-        model_name,
-        parameters,
-        estimate,
-        champion.log_rmse,
-        champion.baseline_log_rmse,
-    )
+    historical = [
+        draw
+        for draw in draws
+        if draw.draw_date is not None and draw.draw_date < target_date
+    ]
+    forecaster = fit_participation_forecaster(historical, min_train, folds, simulations, seed)
+    return forecaster.forecast(jackpot, target_date, game)

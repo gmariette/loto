@@ -1,9 +1,19 @@
+import io
+import ssl
+import subprocess
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
-from loto_lab.data import load_draws, load_draws_many, load_legacy_draws
+from loto_lab.data import (
+    download_latest_archive,
+    load_draws,
+    load_draws_many,
+    load_legacy_draws,
+)
 
 CSV = """date_de_tirage;boule_1;boule_2;boule_3;boule_4;boule_5;numero_chance
 03/01/2024;1;2;3;4;5;6
@@ -96,6 +106,24 @@ class DataTests(unittest.TestCase):
                 archive.writestr("superloto.csv", CSV)
             draws = load_draws(path)
         self.assertEqual(draws[0].game, "super_loto")
+
+    def test_download_falls_back_to_verified_curl_on_python_tls_error(self) -> None:
+        archive_bytes = io.BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w") as archive:
+            archive.writestr("draws.csv", CSV)
+        tls_error = urllib.error.URLError(ssl.SSLCertVerificationError(1, "bad chain"))
+        completed = subprocess.CompletedProcess([], 0, stdout=archive_bytes.getvalue())
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "latest.zip"
+            with (
+                patch("loto_lab.data.urllib.request.urlopen", side_effect=tls_error),
+                patch("loto_lab.data.shutil.which", return_value="/usr/bin/curl"),
+                patch("loto_lab.data.subprocess.run", return_value=completed) as run,
+            ):
+                download_latest_archive(target, "https://example.test/archive")
+        command = run.call_args.args[0]
+        self.assertNotIn("--insecure", command)
+        self.assertIn("--fail", command)
 
 
 if __name__ == "__main__":

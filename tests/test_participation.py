@@ -42,19 +42,51 @@ class ParticipationTests(unittest.TestCase):
         self.assertEqual(len(observations), 180)
         self.assertGreater(observations[0].estimated_tickets, 2_000_000)
 
+    def test_multiple_winners_reconstruct_advertised_jackpot(self) -> None:
+        draw = participation_draws(1)[0]
+        prizes = tuple(
+            PrizeResult(prize.rank, 3, 2_000_000) if prize.rank == 1 else prize
+            for prize in draw.prizes
+        )
+        observation = participation_observations(
+            [Draw(draw.main, draw.chance, draw.draw_date, draw.game, prizes)]
+        )[0]
+        self.assertEqual(observation.jackpot, 6_000_000)
+
     def test_temporal_backtest_and_forecast(self) -> None:
         draws = participation_draws()
         results = participation_backtest(draws, min_train=100, folds=2, simulations=100)
         self.assertEqual({result.model for result in results}, {"ridge", "gradient_boosting"})
         forecast = forecast_participation(
             draws,
-            5_000_000,
+            20_000_000,
             date(2021, 1, 1),
             min_train=100,
             folds=2,
             simulations=100,
         )
         self.assertGreater(forecast.estimated_tickets, 0)
+        self.assertAlmostEqual(
+            forecast.estimated_tickets,
+            forecast.median_estimated_tickets * forecast.smearing_factor,
+        )
+        self.assertTrue(forecast.extrapolated)
+        self.assertEqual(forecast.uncertainty_method, "temporal_empirical_residuals")
+        self.assertGreater(forecast.residual_observations, 0)
+        self.assertTrue(all(factor > 0 for factor in results[0].calibration_factors))
+
+    def test_historical_forecast_discards_future_draws(self) -> None:
+        draws = participation_draws(220)
+        target = draws[179].draw_date + timedelta(days=1)
+        forecast = forecast_participation(
+            draws,
+            5_000_000,
+            target,
+            min_train=100,
+            folds=2,
+            simulations=100,
+        )
+        self.assertEqual(forecast.observations, 180)
 
 
 if __name__ == "__main__":

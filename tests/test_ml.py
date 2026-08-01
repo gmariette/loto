@@ -6,9 +6,14 @@ import numpy as np
 
 from loto_lab.domain import Draw
 from loto_lab.ml import (
+    _fit_predict,
+    _holm_values,
+    _top5_indices,
+    _top5_inference,
     blend_with_uniform,
     build_feature_dataset,
     nested_ml_backtest,
+    next_feature_matrix,
     predict_next_draw,
     project_inclusion_probabilities,
 )
@@ -38,6 +43,26 @@ class MLTests(unittest.TestCase):
         blended = blend_with_uniform(probabilities, 0.0)
         np.testing.assert_allclose(blended, 5 / 49)
 
+    def test_uniform_ties_have_seeded_random_ranking(self) -> None:
+        probabilities = np.full(49, 5 / 49)
+        first = _top5_indices(probabilities, np.random.default_rng(42))
+        second = _top5_indices(probabilities, np.random.default_rng(42))
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(len(set(first)), 5)
+
+    def test_top5_inference_detects_large_hit_uplift(self) -> None:
+        uplift, low, high, p_value = _top5_inference(
+            np.full(100, 5.0), simulations=100, seed=42
+        )
+        self.assertGreater(uplift, 0)
+        self.assertGreater(low, 0)
+        self.assertGreater(high, 0)
+        self.assertLess(p_value, 0.05)
+
+    def test_holm_adjustment_is_monotone(self) -> None:
+        adjusted = _holm_values([0.01, 0.02, 0.5])
+        np.testing.assert_allclose(adjusted, [0.03, 0.04, 0.5])
+
     def test_feature_dataset_has_one_row_per_number(self) -> None:
         dataset = build_feature_dataset(dated_random_draws(80), min_history=20)
         self.assertEqual(dataset.x.shape[1], 49)
@@ -54,9 +79,139 @@ class MLTests(unittest.TestCase):
             models=("bayesian",),
         )
         self.assertEqual(results[0].test_draws, 100)
+        self.assertAlmostEqual(results[0].uniform_expected_top5_hits, 25 / 49)
+        self.assertGreaterEqual(results[0].top5_p_value, 0.0)
+        self.assertLessEqual(results[0].top5_p_value, 1.0)
+        self.assertEqual(
+            results[0].qualified,
+            results[0].probability_qualified or results[0].ranking_qualified,
+        )
         prediction = predict_next_draw(draws, results, date(2021, 1, 1))
         if not results[0].qualified:
             self.assertEqual(prediction["status"], "abstention")
+            self.assertEqual(prediction["game"], "loto")
+            self.assertEqual(prediction["training_last_date"], draws[-1].draw_date)
+            forced = predict_next_draw(
+                draws, results, date(2021, 1, 1), force=True
+            )
+            self.assertFalse(forced["validation"]["qualified"])
+            self.assertIn("mean_brier_delta", forced["validation"])
+            self.assertIn("top5_hit_uplift", forced["validation"])
+            self.assertGreaterEqual(forced["probability_spread"], 0.0)
+
+    def test_rolling_bayesian_uses_only_past_window_frequencies(self) -> None:
+        draws = dated_random_draws(80)
+        dataset = build_feature_dataset(draws, min_history=20)
+        parameters = {
+            "window": 10,
+            "prior_strength": 20.0,
+            "uniform_blend": 1.0,
+        }
+        predicted = _fit_predict(
+            "rolling_bayesian",
+            parameters,
+            dataset.x[:40],
+            dataset.y[:40],
+            dataset.x[40:41],
+            seed=0,
+        )
+        self.assertAlmostEqual(float(predicted[0].sum()), 5.0)
+        self.assertGreater(float(np.ptp(predicted[0])), 0.0)
+
+    def test_rolling_bayesian_participates_in_nested_selection(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("rolling_bayesian",),
+        )
+        self.assertEqual(results[0].model, "rolling_bayesian")
+        self.assertEqual(results[0].test_draws, 100)
+        self.assertIn(results[0].final_parameters["window"], (10, 50, 200))
+
+    def test_logistic_ranker_is_tuned_for_non_uniform_ranking(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("logistic_ranker",),
+        )
+        self.assertEqual(results[0].model, "logistic_ranker")
+        self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
+
+    def test_model_results_do_not_depend_on_requested_order(self) -> None:
+        draws = dated_random_draws(180)
+        common = {
+            "min_history": 20,
+            "min_train": 60,
+            "outer_folds": 2,
+            "simulations": 100,
+        }
+        forward = nested_ml_backtest(
+            draws, models=("bayesian", "rolling_bayesian"), **common
+        )
+        reverse = nested_ml_backtest(
+            draws, models=("rolling_bayesian", "bayesian"), **common
+        )
+        forward_by_model = {result.model: result for result in forward}
+        reverse_by_model = {result.model: result for result in reverse}
+        for model in forward_by_model:
+            self.assertEqual(
+                forward_by_model[model].mean_brier_delta,
+                reverse_by_model[model].mean_brier_delta,
+            )
+            self.assertEqual(
+                forward_by_model[model].top5_hit_uplift,
+                reverse_by_model[model].top5_hit_uplift,
+            )
+
+    def test_backtest_can_isolate_the_target_game(self) -> None:
+        draws = dated_random_draws(240)
+        mixed = [
+            Draw(
+                draw.main,
+                draw.chance,
+                draw.draw_date,
+                "loto" if index % 2 == 0 else "super_loto",
+            )
+            for index, draw in enumerate(draws)
+        ]
+        results = nested_ml_backtest(
+            mixed,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            game="super_loto",
+            models=("bayesian",),
+        )
+        self.assertEqual(results[0].test_draws, 40)
+
+    def test_prediction_rejects_a_date_inside_training_history(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("bayesian",),
+        )
+        with self.assertRaisesRegex(ValueError, "posterieure"):
+            predict_next_draw(draws, results, draws[-1].draw_date, force=True)
+
+    def test_next_features_ignore_draws_on_or_after_target(self) -> None:
+        draws = dated_random_draws(80)
+        target = draws[40].draw_date
+        expected = next_feature_matrix(draws[:40], target)
+        actual = next_feature_matrix(draws, target)
+        np.testing.assert_allclose(actual, expected)
 
 
 if __name__ == "__main__":

@@ -128,22 +128,136 @@ variables sont construites avant que tous les tirages de cette date soient ajout
 - jour de semaine, annee et type Loto/Super Loto/Grand Loto ;
 - effet propre a chacun des 49 numeros.
 
-Trois familles sont comparees : posterior bayesien regularise, regression logistique penalisee et
-gradient boosting avec regularisation L2. La selection des hyperparametres et du poids de
+Depuis la version 0.15.0, cinq familles sont comparees : posterior bayesien cumulatif, posterior
+bayesien sur fenetre 10/50/200, regression logistique penalisee pour le Brier, regression logistique
+selectionnee directement sur les hits Top-5 et gradient boosting avec regularisation L2. Depuis la
+version 0.13.0, l'apprentissage est isole par jeu cible afin qu'un modele Loto ne melange pas les
+tirages Super Loto et Grand Loto. La selection des hyperparametres et du poids de
 retraction vers l'uniforme est effectuee dans une fenetre temporelle interne; seul le fold externe
-sert a annoncer la performance.
+sert a annoncer la performance. Les graines sont attribuees par identite de modele: ajouter ou
+reordonner un challenger ne modifie plus les resultats des autres familles.
 
-Les criteres de qualification sont cumulatifs : delta Brier moyen negatif, borne haute bootstrap
-a 95 % negative et test de permutation corrige par Holm inferieur a 5 %. Sans cela, l'API renvoie
-`abstention`. Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous
-mauvais en faux pronostic.
+La qualification dispose de deux voies. La voie probabiliste exige un delta Brier moyen negatif,
+une borne haute bootstrap negative et une p-value de permutation corrigee inferieure a 5 %. La voie
+de classement compare directement les hits du Top-5 a l'esperance uniforme exacte `25/49`; elle
+exige une borne basse positive et une p-value hypergeometrique corrigee inferieure a 5 %. Holm porte
+conjointement sur les cinq modeles et les deux metriques. Sans cela, l'API renvoie `abstention`.
+Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous mauvais en faux
+pronostic.
 
 ## 9. Valeur monetaire
 
 Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Le rang 9 estime la
 participation car son esperance de gagnants est le nombre de grilles multiplie par sa probabilite
 exacte. Une validation temporelle compare Ridge et gradient boosting a une mediane par jeu et jour.
-Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool median des codes au
-nombre de grilles. Un bootstrap combine l'incertitude de rapports et l'erreur de participation.
-La decision reste `no_bet` tant que sa borne basse ne couvre pas le prix de la grille. La popularite
-reelle d'une combinaison reste inconnue et se teste seulement par scenario.
+La retransformation vers un nombre de grilles applique un facteur de smearing calcule sur une
+validation passee et publie son biais en niveau hors echantillon. Le jackpot historique est le
+pool total du rang 1, reconstruit depuis le gain unitaire lorsqu'il y a plusieurs gagnants.
+
+Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool moyen des codes au
+nombre de grilles. Les petits rangs sont agreges comme moyenne des esperances completes par tirage,
+ce qui evite le biais d'une mediane calculee separement pour chaque rang. Une validation passee
+choisit conjointement l'horizon de baremes et une probabilite de queue parmi 1 %, 2,5 % et 5 % pour
+viser 95 % de couverture empirique. Le bootstrap echantillonne ensuite un prochain bareme et une
+erreur multiplicative empirique issue des folds passes. Les seuils central et
+conservateur reajustent le volume pour chaque jackpot candidat et signalent un depassement du
+support d'apprentissage. La decision reste `no_bet` tant que sa borne basse ne depasse pas le prix.
+La popularite reelle d'une combinaison reste inconnue et se teste seulement par scenario.
+
+## 10. Backtest de valeur
+
+Une estimation monetaire datee exclut tous les tirages egaux ou posterieurs a sa cible. Le backtest
+decoupe ensuite les dates futures en folds externes et reentraine le modele toutes les 52 dates.
+Chaque ajustement de participation, d'horizon et de queue predictive utilise uniquement les donnees
+anterieures a la nouvelle periode walk-forward.
+
+La cible n'est pas le gain aleatoire d'une grille particuliere. Elle reconstruit l'esperance du
+bareme futur avec les probabilites exactes, le volume deduit du rang 9, les codes publies et un
+partage Poisson moyen. Le protocole annonce biais, MAE, RMSE, couverture et decisions. Les
+intervalles et permutations utilisent des blocs contigus de 12 tirages pour ne pas supposer
+artificiellement que les erreurs voisines sont independantes.
+
+## 11. Validation prospective
+
+Les iterations successives ont consulte plusieurs fois le meme historique externe. Meme avec une
+coupure temporelle correcte, ce processus finit par adapter les choix de methode au jeu de test.
+La suite de l'evaluation repose donc sur des estimations figees avant tirage.
+
+`value-record` interdit une date passee et une seconde prevision pour le meme jeu et la meme date.
+Il stocke rapport, version, provenance et configuration dans une base append-only, puis calcule un
+hash chaine. L'export JSON et le hash doivent etre commits et pousses avant le tirage: les triggers
+SQLite et le hash detectent une modification, tandis que Git fournit l'ancrage temporel externe.
+
+Apres publication des rapports, `value-score` reconstruit la meme cible d'EV que le backtest et
+ajoute un score chaine distinct. Biais, MAE, couverture et faux signaux prospectifs ne deviennent
+interpretables qu'apres un echantillon suffisant; le premier enregistrement ne permet aucune
+conclusion.
+
+La version 0.8.0 exporte un bundle autonome contenant chaque champ hache. Le verificateur reconstruit
+les deux chaines, controle la coherence entre colonnes et rapport, puis recalcule l'EV observee,
+l'erreur, la couverture et les erreurs de decision depuis le bareme inclus. Cela detecte une
+metrique incoherente meme si son hash a ete recalcule. L'authenticite du bareme exige toujours une
+comparaison avec la publication officielle.
+
+Le scoring applique la meme barriere temporelle que l'enregistrement: un tirage cible ne peut pas
+etre note avant 20 h 15, heure de Paris. Le bundle verifie egalement que le jeu et la date du bareme
+correspondent a la prevision et que l'heure de scoring est posterieure a cette cloture.
+
+## 12. Provenance reproductible
+
+Un chemin de fichier ne suffit pas a identifier les donnees utilisees: son contenu peut changer
+entre deux executions. La version 0.9.0 calcule donc le SHA-256 et la taille de chaque entree, puis
+un second SHA-256 sur la representation canonique de tous les tirages effectivement charges. Ce
+second niveau couvre notamment le contenu logique d'une base SQLite meme si son stockage physique
+ou son journal WAL differe.
+
+Les scores v2 incluent ces empreintes et l'URL HTTPS FDJ du resultat dans leur hash. La migration
+ajoute les colonnes de provenance sans recalculer les anciens hashes; un verificateur choisit
+l'algorithme v1 ou v2 ligne par ligne. Cette compatibilite est necessaire: reecrire une ancienne
+preuve au nom d'une meilleure provenance detruirait precisement sa valeur chronologique.
+
+## 13. Comparaison prospective au benchmark
+
+Une MAE prospective isolee ne dit pas si le moteur apporte quelque chose: une moyenne historique
+plus simple peut avoir la meme erreur ou faire mieux. La version 0.10.0 fige donc `naive_ev` dans le
+rapport pre-tirage. Au scoring, elle calcule l'erreur absolue de chaque methode et le delta
+`|erreur modele| - |erreur naive|`; un delta negatif favorise le modele complet.
+
+Les scores sont regroupes par identite scientifique pour ne pas melanger des algorithmes differents.
+Depuis la version 0.12.0, cette identite n'est plus la version du paquet: c'est le hash canonique des
+sources du moteur de valeur, de ses parametres et de son environnement numerique. Une release
+purement operationnelle conserve ainsi la cohorte; toute modification susceptible de changer le
+calcul en cree une autre. La qualification attend exactement 100 scores comparables, puis utilise
+un bootstrap en blocs et une permutation de signes par blocs de 12. Elle exige un intervalle du
+delta entierement negatif, une p-value inferieure a 5 % et une couverture compatible avec 95 %.
+Cette evaluation est figee sur les 100 premiers scores. Les suivants mettent a jour la surveillance
+mais pas le verdict, ce qui evite un test sequentiel repete jusqu'a un resultat favorable.
+
+## 14. Discipline operationnelle
+
+Un protocole prospectif peut encore etre biaise si les previsions difficiles sont oubliees ou si
+seuls certains tirages sont enregistres. La version 0.11.0 decrit chaque echeance dans un manifeste
+strict et fournit une commande idempotente adaptee a une execution planifiee. Le dry-run valide les
+donnees et calcule le rapport sans ecrire; l'execution reelle enregistre avant cloture, attend le
+resultat, puis score apres import sans doublon.
+
+La transaction SQLite protege les lignes scientifiques, le remplacement atomique protege le fichier
+de preuve et un journal JSONL chaine trace chaque passage. Une interruption entre ces etapes ne
+cree pas une seconde prevision: le prochain passage observe l'etat du registre et reconstruit
+l'export. Le journal rend aussi visibles les passages `waiting_result`, `missed_deadline` et
+`already_scored`, utiles pour auditer les echeances manquantes.
+
+## 15. Identite scientifique reproductible
+
+La version applicative reste necessaire pour retrouver le logiciel execute, mais elle n'est pas une
+bonne unite statistique: corriger une commande ou une documentation ne change pas le modele. La
+version 0.12.0 enregistre donc `evaluation_cohort` avec chaque nouvelle prevision. Cette valeur est
+le SHA-256 d'un manifeste canonique contenant les hashes de `domain.py`, `participation.py`,
+`probability.py` et `value.py`, les parametres de calcul, ainsi que les versions de Python, NumPy et
+scikit-learn.
+
+Le manifeste complet est inclus dans le payload deja protege par la chaine de previsions. Le
+verificateur recalcule son hash et controle sa coherence avec le jeu, la graine et le nombre de
+simulations annonces. La migration SQLite ajoute seulement une colonne nullable: les anciennes
+preuves gardent leurs hashes et sont rangees sous `legacy:model-version:*` lorsqu'elles disposent
+d'un score comparable.
