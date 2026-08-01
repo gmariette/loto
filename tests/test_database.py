@@ -29,6 +29,7 @@ class DatabaseTests(unittest.TestCase):
             import_current_archive(connection, archive)
             connection.close()
             draws = load_current_database(database)
+            loto_draws = load_current_database(database, "loto")
             info = database_info(database)
         self.assertEqual(
             draws,
@@ -45,6 +46,7 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual(info["draws"], 1)
         self.assertEqual(info["code_prize_rows"], 1)
+        self.assertEqual(loto_draws, [])
 
     def test_legacy_draw_validation(self) -> None:
         draw = LegacyDraw((1, 2, 3, 4, 5, 6), 7, date(1996, 1, 1), "loto")

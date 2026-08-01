@@ -8,12 +8,15 @@ from pathlib import Path
 
 MODEL_SPECIFICATION_FORMAT = "loto-lab.value-model"
 MODEL_SPECIFICATION_VERSION = 1
+NUMBER_MODEL_SPECIFICATION_FORMAT = "loto-lab.number-model"
+NUMBER_MODEL_SPECIFICATION_VERSION = 1
 MODEL_SOURCE_FILES = (
     "domain.py",
     "participation.py",
     "probability.py",
     "value.py",
 )
+NUMBER_MODEL_SOURCE_FILES = ("domain.py", "ml.py", "number_prospective.py")
 
 
 def _canonical_json(value: object) -> str:
@@ -29,14 +32,16 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def _source_fingerprints() -> list[dict[str, str]]:
+def _source_fingerprints(
+    names: tuple[str, ...] = MODEL_SOURCE_FILES,
+) -> list[dict[str, str]]:
     package = Path(__file__).parent
     return [
         {
             "path": f"loto_lab/{name}",
             "sha256": hashlib.sha256((package / name).read_bytes()).hexdigest(),
         }
-        for name in MODEL_SOURCE_FILES
+        for name in names
     ]
 
 
@@ -68,12 +73,58 @@ def build_model_specification(
     return {**specification, "sha256": _digest(specification)}
 
 
+def build_number_model_specification(
+    *,
+    game: str,
+    min_history: int,
+    min_train: int,
+    outer_folds: int,
+    simulations: int,
+    seed: int,
+    models: tuple[str, ...],
+) -> dict[str, object]:
+    specification: dict[str, object] = {
+        "format": NUMBER_MODEL_SPECIFICATION_FORMAT,
+        "specification_version": NUMBER_MODEL_SPECIFICATION_VERSION,
+        "source_files": _source_fingerprints(NUMBER_MODEL_SOURCE_FILES),
+        "runtime": {
+            "python": platform.python_version(),
+            "numpy": version("numpy"),
+            "scikit-learn": version("scikit-learn"),
+        },
+        "parameters": {
+            "game": game,
+            "min_history": min_history,
+            "min_train": min_train,
+            "outer_folds": outer_folds,
+            "simulations": simulations,
+            "seed": seed,
+            "models": list(models),
+        },
+    }
+    return {**specification, "sha256": _digest(specification)}
+
+
 def validate_model_specification(value: object) -> str:
+    return _validate_model_specification(
+        value, MODEL_SPECIFICATION_FORMAT, MODEL_SPECIFICATION_VERSION
+    )
+
+
+def validate_number_model_specification(value: object) -> str:
+    return _validate_model_specification(
+        value, NUMBER_MODEL_SPECIFICATION_FORMAT, NUMBER_MODEL_SPECIFICATION_VERSION
+    )
+
+
+def _validate_model_specification(
+    value: object, expected_format: str, expected_version: int
+) -> str:
     if not isinstance(value, dict):
         raise ValueError("La specification du modele doit etre un objet JSON")
-    if value.get("format") != MODEL_SPECIFICATION_FORMAT:
+    if value.get("format") != expected_format:
         raise ValueError("Format de specification du modele inconnu")
-    if value.get("specification_version") != MODEL_SPECIFICATION_VERSION:
+    if value.get("specification_version") != expected_version:
         raise ValueError("Version de specification du modele inconnue")
     claimed_hash = value.get("sha256")
     if (

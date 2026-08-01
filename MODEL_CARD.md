@@ -11,6 +11,7 @@ prediction lorsque les preuves hors echantillon sont insuffisantes.
 - Posterior bayesien temporel sur fenetre 10/50/200 avec lissage selectionne dans le passe.
 - Regression logistique L2 sur variables temporelles et effets par numero.
 - Regression logistique de classement dont la regularisation maximise les hits internes.
+- Regression Ridge de classement sur variables centrees dans chaque tirage.
 - Histogram Gradient Boosting avec profondeur et regularisation limitees.
 - Regression Ridge et gradient boosting pour le volume de grilles.
 
@@ -40,6 +41,8 @@ dix classes supplementaire.
 - Benchmark naif fige avant tirage et qualification par empreinte sur une cohorte fixe de 100 scores.
 - Identite scientifique SHA-256 du code, des parametres et des dependances du moteur de valeur.
 - Cycle idempotent pilote par manifeste, export atomique et journal d'execution chaine.
+- Registre append-only des numeros, scoring Top-5 exact et preuve JSON verifiable hors SQLite.
+- Qualification prospective sur 100 scores avec depense alpha convergente entre les cohortes.
 
 ## Limites
 
@@ -69,6 +72,7 @@ dix classes supplementaire.
 
 ## Resultat actuel
 
-Aucun des cinq modeles de numeros ne se qualifie. La sortie de production est `abstention`. Le
+Aucun des six modeles de numeros ne se qualifie. Ridge obtient le meilleur Top-5 brut mais son
+intervalle couvre encore l'uniforme. La sortie de production est `abstention`. Le
 gradient boosting de participation se qualifie contre sa reference et sert uniquement au calcul
 de partage et de valeur. Le mode force ne doit pas etre presente comme une prediction gagnante.

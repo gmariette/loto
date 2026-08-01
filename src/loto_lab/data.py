@@ -292,7 +292,7 @@ def load_draws(path: str | Path, game: str | None = None) -> list[Draw]:
     if source.suffix.lower() in {".sqlite", ".db"}:
         from .database import load_current_database
 
-        return load_current_database(source)
+        return load_current_database(source, game)
     source_game = game or _infer_game(source)
     if source.is_dir():
         draws: list[Draw] = []
@@ -385,7 +385,7 @@ def _deduplicate_and_sort(draws: Iterable[Draw]) -> list[Draw]:
 def download_latest_archive(destination: str | Path, url: str = LATEST_ARCHIVE_URL) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.15.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.16.0"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
             content = response.read()

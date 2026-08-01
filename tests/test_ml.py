@@ -145,6 +145,43 @@ class MLTests(unittest.TestCase):
         self.assertEqual(results[0].model, "logistic_ranker")
         self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
 
+    def test_ridge_ranker_uses_only_within_draw_differences(self) -> None:
+        dataset = build_feature_dataset(dated_random_draws(100), min_history=20)
+        parameters = {"alpha": 10.0, "uniform_blend": 1.0}
+        baseline = _fit_predict(
+            "ridge_ranker",
+            parameters,
+            dataset.x[:60],
+            dataset.y[:60],
+            dataset.x[60:62],
+            seed=0,
+        )
+        common_shift = np.linspace(-5, 5, dataset.x.shape[-1])[None, None, :]
+        shifted = _fit_predict(
+            "ridge_ranker",
+            parameters,
+            dataset.x[:60] + common_shift,
+            dataset.y[:60],
+            dataset.x[60:62] + common_shift,
+            seed=0,
+        )
+        np.testing.assert_allclose(baseline, shifted, atol=1e-10)
+        np.testing.assert_allclose(baseline.sum(axis=1), 5.0)
+        self.assertGreater(float(np.ptp(baseline)), 0.0)
+
+    def test_ridge_ranker_participates_in_nested_selection(self) -> None:
+        results = nested_ml_backtest(
+            dated_random_draws(180),
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("ridge_ranker",),
+        )
+        self.assertEqual(results[0].model, "ridge_ranker")
+        self.assertIn(results[0].final_parameters["alpha"], (0.1, 1.0, 10.0, 100.0, 1000.0))
+        self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
+
     def test_model_results_do_not_depend_on_requested_order(self) -> None:
         draws = dated_random_draws(180)
         common = {

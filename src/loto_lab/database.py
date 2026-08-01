@@ -267,15 +267,21 @@ def _load_code_prize(
     )
 
 
-def load_current_database(path: str | Path) -> list[Draw]:
+def load_current_database(path: str | Path, game: str | None = None) -> list[Draw]:
     connection = connect_database(path)
     try:
+        where = "regime = '5/49+chance'"
+        parameters: tuple[object, ...] = ()
+        if game is not None:
+            where += " AND game = ?"
+            parameters = (game,)
         rows = connection.execute(
-            """
+            f"""
             SELECT id, game, draw_date, extra_number
-            FROM draws WHERE regime = '5/49+chance'
+            FROM draws WHERE {where}
             ORDER BY draw_date, game, id
-            """
+            """,  # noqa: S608
+            parameters,
         ).fetchall()
         draws = []
         for row in rows:
