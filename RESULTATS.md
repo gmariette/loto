@@ -49,6 +49,7 @@ le fold correspondant.
 | Gradient boosting retracte | 0 | [0 ; 0] | 0,32954 | 0,5147 | non |
 | Logistique optimisee Top-5 | +0,00020257 | [+0,00014879 ; +0,00025621] | 0,33068 | 0,5192 | non |
 | Ridge intra-tirage | +0,00015259 | [+0,00010292 ; +0,00020289] | 0,33049 | 0,5304 | non |
+| Ridge glissant | -0,00000071 | [-0,00000352 ; +0,00000210] | 0,32954 | 0,5375 | non |
 
 La log-loss uniforme vaut `0,32954`. Le challenger temporel reduit d'environ 70 % la degradation du
 bayesien cumulatif, mais ne franchit pas zero. La logistique obtient davantage de hits Top-5 sans
@@ -59,7 +60,7 @@ totale et reproduit exactement le benchmark. Aucun modele ne se qualifie; `ml-pr
 La version 0.14 teste aussi directement le classement d'une grille. Les egalites de probabilites
 sont departagees par un alea reproductible, puis les hits sont compares a `25/49`. L'intervalle est
 bootstrappe et la p-value vient du null hypergeometrique exact. Dans le protocole courant, Holm
-corrige conjointement les six tests Brier et les six tests Top-5.
+corrige conjointement les sept tests Brier et les sept tests Top-5.
 
 | Modele | Hits Top-5 | Gain vs 25/49 | IC 95 % du gain | p Holm | Qualifie classement |
 |---|---:|---:|---:|---:|---:|
@@ -68,9 +69,10 @@ corrige conjointement les six tests Brier et les six tests Top-5.
 | Logistique retractee | 0,5232 | +0,0130 | [-0,0133 ; +0,0398] | 1,000 | non |
 | Gradient boosting retracte | 0,5147 | +0,0045 | [-0,0209 ; +0,0309] | 1,000 | non |
 | Logistique optimisee Top-5 | 0,5192 | +0,0090 | [-0,0191 ; +0,0354] | 1,000 | non |
-| Ridge intra-tirage | 0,5304 | +0,0202 | [-0,0062 ; +0,0466] | 0,912 | non |
+| Ridge intra-tirage | 0,5304 | +0,0202 | [-0,0062 ; +0,0466] | 0,988 | non |
+| Ridge glissant | 0,5375 | +0,0273 | [-0,0008 ; +0,0542] | 0,280 | non |
 
-Ridge devient le meilleur en hits bruts, mais son intervalle couvre encore zero. Cette
+Le Ridge glissant devient le meilleur en hits bruts, mais son intervalle touche encore zero. Cette
 nouvelle metrique ne justifie donc toujours pas une grille predictive.
 
 La version 0.15 selectionne aussi une logistique directement sur les hits de la fenetre interne,
@@ -87,6 +89,12 @@ autres prototypes directement optimises pour le rang, gradient boosting brut et 
 chaud/froid, restent sous ce score et ne sont pas integres. Un registre prospectif fige desormais
 chaque identite scientifique sur 100 scores et partage un budget d'erreur de 5 % entre toutes les
 cohortes successives.
+
+La version 0.17 retire du Ridge les indicatrices fixes par numero et tous les signaux sauf les
+frequences glissantes 10/50/200. `alpha=100` est choisi dans chacun des trois folds externes. Le
+score atteint `0,5375`, la p-value brute `0,01999`, mais l'intervalle `[-0,0008 ; +0,0542]` et la
+p-value Holm `0,27986` interdisent encore la qualification. Les egalites de probabilites sont
+desormais departagees avec la meme graine dans le backtest et dans la prediction.
 
 ## Participation et esperance monetaire
 

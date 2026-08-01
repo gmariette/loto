@@ -12,6 +12,7 @@ prediction lorsque les preuves hors echantillon sont insuffisantes.
 - Regression logistique L2 sur variables temporelles et effets par numero.
 - Regression logistique de classement dont la regularisation maximise les hits internes.
 - Regression Ridge de classement sur variables centrees dans chaque tirage.
+- Regression Ridge de classement limitee aux frequences glissantes 10/50/200.
 - Histogram Gradient Boosting avec profondeur et regularisation limitees.
 - Regression Ridge et gradient boosting pour le volume de grilles.
 
@@ -72,7 +73,8 @@ dix classes supplementaire.
 
 ## Resultat actuel
 
-Aucun des six modeles de numeros ne se qualifie. Ridge obtient le meilleur Top-5 brut mais son
-intervalle couvre encore l'uniforme. La sortie de production est `abstention`. Le
+Aucun des sept modeles de numeros ne se qualifie. Le Ridge glissant obtient le meilleur Top-5 brut
+et une p-value brute inferieure a 5 %, mais son intervalle touche encore zero et Holm corrige les
+14 hypotheses. La sortie de production est `abstention`. Le
 gradient boosting de participation se qualifie contre sa reference et sert uniquement au calcul
 de partage et de valeur. Le mode force ne doit pas etre presente comme une prediction gagnante.

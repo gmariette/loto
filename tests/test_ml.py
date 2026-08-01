@@ -182,6 +182,55 @@ class MLTests(unittest.TestCase):
         self.assertIn(results[0].final_parameters["alpha"], (0.1, 1.0, 10.0, 100.0, 1000.0))
         self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
 
+    def test_rolling_ridge_ignores_non_rolling_features(self) -> None:
+        dataset = build_feature_dataset(dated_random_draws(100), min_history=20)
+        parameters = {"alpha": 100.0, "uniform_blend": 1.0}
+        baseline = _fit_predict(
+            "rolling_ridge_ranker",
+            parameters,
+            dataset.x[:60],
+            dataset.y[:60],
+            dataset.x[60:62],
+            seed=0,
+        )
+        altered = dataset.x.copy()
+        rolling = {
+            dataset.feature_names.index(f"frequency_{window}_delta")
+            for window in (10, 50, 200)
+        }
+        non_rolling = [index for index in range(altered.shape[-1]) if index not in rolling]
+        altered[:, :, non_rolling] += 1_000
+        actual = _fit_predict(
+            "rolling_ridge_ranker",
+            parameters,
+            altered[:60],
+            dataset.y[:60],
+            altered[60:62],
+            seed=0,
+        )
+        np.testing.assert_allclose(baseline, actual)
+
+    def test_rolling_ridge_participates_in_nested_selection(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("rolling_ridge_ranker",),
+        )
+        self.assertEqual(results[0].model, "rolling_ridge_ranker")
+        self.assertIn(results[0].final_parameters["alpha"], (0.1, 1.0, 10.0, 100.0, 1000.0))
+        self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
+        first = predict_next_draw(
+            draws, results, date(2021, 1, 1), force=True, seed=42
+        )
+        second = predict_next_draw(
+            draws, results, date(2021, 1, 1), force=True, seed=42
+        )
+        self.assertEqual(first["numbers"], second["numbers"])
+
     def test_model_results_do_not_depend_on_requested_order(self) -> None:
         draws = dated_random_draws(180)
         common = {
