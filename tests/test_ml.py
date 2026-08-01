@@ -6,8 +6,10 @@ import numpy as np
 
 from loto_lab.domain import Draw
 from loto_lab.ml import (
+    FEATURE_NAMES,
     _fit_predict,
     _holm_values,
+    _ranking_indices,
     _top5_indices,
     _top5_inference,
     blend_with_uniform,
@@ -49,6 +51,19 @@ class MLTests(unittest.TestCase):
         second = _top5_indices(probabilities, np.random.default_rng(42))
         np.testing.assert_array_equal(first, second)
         self.assertEqual(len(set(first)), 5)
+
+    def test_hierarchical_ranker_uses_gap_only_for_primary_ties(self) -> None:
+        probabilities = np.zeros(49)
+        probabilities[:6] = 1.0
+        features = np.zeros((49, len(FEATURE_NAMES)))
+        features[:6, FEATURE_NAMES.index("normalized_gap")] = np.arange(6)
+        selected = _ranking_indices(
+            probabilities,
+            np.random.default_rng(42),
+            "hierarchical_ridge_ranker",
+            features,
+        )
+        self.assertEqual(set(selected), {1, 2, 3, 4, 5})
 
     def test_top5_inference_detects_large_hit_uplift(self) -> None:
         uplift, low, high, p_value = _top5_inference(
@@ -230,6 +245,32 @@ class MLTests(unittest.TestCase):
             draws, results, date(2021, 1, 1), force=True, seed=42
         )
         self.assertEqual(first["numbers"], second["numbers"])
+
+    def test_hierarchical_ridge_participates_in_nested_selection(self) -> None:
+        results = nested_ml_backtest(
+            dated_random_draws(180),
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("hierarchical_ridge_ranker",),
+        )
+        self.assertEqual(results[0].model, "hierarchical_ridge_ranker")
+        self.assertIn(results[0].final_parameters["alpha"], (0.1, 1.0, 10.0, 100.0, 1000.0))
+
+    def test_backtest_as_of_matches_physically_truncated_history(self) -> None:
+        draws = dated_random_draws(190)
+        cutoff = draws[169].draw_date
+        common = {
+            "min_history": 20,
+            "min_train": 60,
+            "outer_folds": 2,
+            "simulations": 100,
+            "models": ("bayesian",),
+        }
+        frozen = nested_ml_backtest(draws, as_of=cutoff, **common)
+        truncated = nested_ml_backtest(draws[:170], **common)
+        self.assertEqual(frozen, truncated)
 
     def test_model_results_do_not_depend_on_requested_order(self) -> None:
         draws = dated_random_draws(180)

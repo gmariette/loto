@@ -141,9 +141,11 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         seed=args.seed,
         game=args.game,
+        as_of=date.fromisoformat(args.as_of) if args.as_of else None,
     )
     payload = {
         "game": args.game,
+        "as_of": args.as_of,
         "results": [result.to_dict() for result in results],
         "decision": (
             "model_available" if any(result.qualified for result in results) else "abstention"
@@ -494,6 +496,10 @@ def build_parser() -> argparse.ArgumentParser:
     ml_backtest.add_argument("--folds", type=int, default=3)
     ml_backtest.add_argument("--simulations", type=int, default=2_000)
     ml_backtest.add_argument("--seed", type=int, default=0)
+    ml_backtest.add_argument(
+        "--as-of",
+        help="Exclure les tirages posterieurs a cette date ISO incluse",
+    )
     ml_backtest.add_argument(
         "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
     )
