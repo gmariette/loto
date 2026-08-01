@@ -4,7 +4,7 @@ import random
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
-from math import exp, expm1
+from math import expm1
 from statistics import fmean
 
 from .domain import Draw
@@ -29,6 +29,8 @@ class ValueReport:
     participation_smearing_factor: float | None
     participation_model: str | None
     participation_log_rmse: float | None
+    participation_uncertainty_method: str | None
+    participation_residual_observations: int | None
     participation_jackpot_max: float | None
     participation_extrapolated: bool
     lower_rank_ev: float
@@ -59,7 +61,7 @@ def _current_prize_draws(draws: list[Draw], game: str) -> list[Draw]:
         ranks = {prize.rank for prize in draw.prizes if prize.payout is not None}
         if draw.game == game and ranks.issuperset(range(1, 10)):
             selected.append(draw)
-    return selected
+    return sorted(selected, key=lambda draw: draw.draw_date or date.min)
 
 
 def _lower_rank_ev(draw: Draw, probabilities: dict[int, float]) -> float:
@@ -222,7 +224,14 @@ def estimate_value(
         )
         for index in sample_indices
     ]
-    participation_errors = [rng.gauss(0, 1) for _ in range(bootstrap_simulations)]
+    participation_multipliers = (
+        [
+            forecaster.sample_ticket_multiplier(rng)
+            for _ in range(bootstrap_simulations)
+        ]
+        if forecaster is not None
+        else []
+    )
 
     def value_distribution(candidate_jackpot: float) -> tuple[float, list[float]]:
         if forecaster is None or forecast_date is None:
@@ -244,16 +253,13 @@ def estimate_value(
             + probabilities[1] * candidate_jackpot * candidate_share
         )
         values = []
-        for sample_lower, sample_pool, error in zip(
+        for sample_lower, sample_pool, multiplier in zip(
             sample_lower_values,
             sample_code_pools,
-            participation_errors,
+            participation_multipliers,
             strict=True,
         ):
-            sample_tickets = candidate.estimated_tickets * exp(
-                error * candidate.backtest_log_rmse
-                - 0.5 * candidate.backtest_log_rmse**2
-            )
+            sample_tickets = candidate.estimated_tickets * multiplier
             sample_lambda = sample_tickets / total_outcomes() * popularity_factor
             values.append(
                 sample_lower
@@ -293,6 +299,12 @@ def estimate_value(
         participation_smearing_factor=(participation.smearing_factor if participation else None),
         participation_model=(participation.model if participation else None),
         participation_log_rmse=(participation.backtest_log_rmse if participation else None),
+        participation_uncertainty_method=(
+            participation.uncertainty_method if participation else None
+        ),
+        participation_residual_observations=(
+            participation.residual_observations if participation else None
+        ),
         participation_jackpot_max=support_max,
         participation_extrapolated=(participation.extrapolated if participation else False),
         lower_rank_ev=lower_ev,
@@ -315,7 +327,7 @@ def estimate_value(
             and conservative_jackpot is not None
             and conservative_jackpot > support_max
         ),
-        uncertainty_method="temporally_selected_historical_predictive_bootstrap",
+        uncertainty_method="temporally_selected_payout_and_empirical_residual_bootstrap",
         decision="eligible" if ci_low > price else "no_bet",
         limitations=(
             "Le rang 9 fournit un proxy du nombre de grilles, pas le volume FDJ certifie.",
@@ -323,6 +335,7 @@ def estimate_value(
             "ajuster popularity_factor pour un scenario anti-foule.",
             "Le calcul des codes suppose que leur pool historique se repartit sur les grilles.",
             "Les rapports futurs et le nombre reel de co-gagnants restent inconnus.",
+            "Les residus de participation sont empiriques mais globaux, sans calibration locale.",
             "Les seuils reevaluent la participation mais deviennent des extrapolations au-dela "
             "du jackpot maximal observe.",
             "Un point estime positif ne suffit pas: la decision utilise la borne basse a 95%.",

@@ -43,13 +43,18 @@ class ValueTests(unittest.TestCase):
             bootstrap_simulations=100,
         )
         self.assertEqual(result.expected_co_winners_source, "participation_model")
+        self.assertEqual(
+            result.participation_uncertainty_method,
+            "temporal_empirical_residuals",
+        )
+        self.assertGreater(result.participation_residual_observations or 0, 0)
         self.assertGreater(result.estimated_tickets or 0, 0)
         self.assertGreater(result.code_ev, 0)
         self.assertLess(result.jackpot_share_factor, 1)
         self.assertGreaterEqual(result.conservative_jackpot or 0, result.fair_jackpot)
         self.assertEqual(
             result.uncertainty_method,
-            "temporally_selected_historical_predictive_bootstrap",
+            "temporally_selected_payout_and_empirical_residual_bootstrap",
         )
         self.assertGreater(result.predictive_payout_window, 0)
         self.assertGreaterEqual(result.payout_validation_coverage, 0)
@@ -73,6 +78,16 @@ class ValueTests(unittest.TestCase):
         result = estimate_value(draws, jackpot=2_000_000, bootstrap_simulations=100)
         lower_probability = sum(item.probability for item in rank_probabilities() if item.rank > 1)
         self.assertAlmostEqual(result.lower_rank_ev, 51 * lower_probability)
+
+    def test_payout_bootstrap_is_invariant_to_input_order(self) -> None:
+        draws = participation_draws(30)
+        ordered = estimate_value(draws, jackpot=2_000_000, bootstrap_simulations=100, seed=7)
+        reversed_report = estimate_value(
+            list(reversed(draws)), jackpot=2_000_000, bootstrap_simulations=100, seed=7
+        )
+        self.assertEqual(ordered.predictive_payout_window, reversed_report.predictive_payout_window)
+        self.assertAlmostEqual(ordered.ev_ci_low, reversed_report.ev_ci_low)
+        self.assertAlmostEqual(ordered.ev_ci_high, reversed_report.ev_ci_high)
 
     def test_value_target_date_discards_future_payouts(self) -> None:
         draws = participation_draws(180)

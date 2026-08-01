@@ -144,12 +144,14 @@ Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Le ra
 participation car son esperance de gagnants est le nombre de grilles multiplie par sa probabilite
 exacte. Une validation temporelle compare Ridge et gradient boosting a une mediane par jeu et jour.
 La retransformation vers un nombre de grilles applique un facteur de smearing calcule sur une
-validation passee et publie son biais en niveau hors echantillon.
+validation passee et publie son biais en niveau hors echantillon. Le jackpot historique est le
+pool total du rang 1, reconstruit depuis le gain unitaire lorsqu'il y a plusieurs gagnants.
 
 Le volume retenu alimente un partage Poisson du jackpot et rapporte le pool moyen des codes au
 nombre de grilles. Les petits rangs sont agreges comme moyenne des esperances completes par tirage,
 ce qui evite le biais d'une mediane calculee separement pour chaque rang. Un bootstrap predictif
-echantillonne un prochain bareme historique et l'erreur de participation. Les seuils central et
+echantillonne un prochain bareme historique et une erreur multiplicative empirique issue des folds
+passes. Les seuils central et
 conservateur reajustent le volume pour chaque jackpot candidat et signalent un depassement du
 support d'apprentissage. La decision reste `no_bet` tant que sa borne basse ne depasse pas le prix.
 La popularite reelle d'une combinaison reste inconnue et se teste seulement par scenario.
@@ -163,5 +165,6 @@ ces choix pour toute la periode test.
 
 La cible n'est pas le gain aleatoire d'une grille particuliere. Elle reconstruit l'esperance du
 bareme futur avec les probabilites exactes, le volume deduit du rang 9, les codes publies et un
-partage Poisson moyen. Le protocole annonce biais, MAE, RMSE, couverture, intervalle de Wilson,
-delta apparie face a une reference sans partage ni codes et nombres de faux positifs/negatifs.
+partage Poisson moyen. Le protocole annonce biais, MAE, RMSE, couverture et decisions. Les
+intervalles et permutations utilisent des blocs contigus de 12 tirages pour ne pas supposer
+artificiellement que les erreurs voisines sont independantes.

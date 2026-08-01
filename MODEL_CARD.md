@@ -27,6 +27,7 @@ dix classes supplementaire.
 - Participation inferee par le rang 9 et comparee a une mediane segmentee sur des folds futurs.
 - Biais de retransformation mesure en niveau et facteur de smearing estime sans donnees futures.
 - Backtest de valeur bloque comparant MAE/RMSE, couverture et decisions a une reference naive.
+- Inference du moteur de valeur par blocs contigus de 12 tirages pour conserver la dependance locale.
 
 ## Limites
 
@@ -34,9 +35,10 @@ dix classes supplementaire.
 - Aucun identifiant public de machine, jeu de boules, maintenance ou operateur dans les archives.
 - Absence des combinaisons effectivement choisies par tous les joueurs.
 - Le volume de grilles est un proxy statistique, pas une mesure FDJ certifiee.
-- Le facteur de smearing est global et ne capture pas toute heteroscedasticite conditionnelle.
+- Les residus empiriques de participation restent globaux et ne capturent pas toute
+  heteroscedasticite conditionnelle.
 - Le gradient boosting n'extrapole pas naturellement au-dela des jackpots d'apprentissage.
-- La couverture observee de 93,69 % reste legerement sous la cible nominale de 95 %.
+- La couverture observee de 93,90 % reste legerement sous la cible nominale de 95 %.
 - Changements possibles de materiel et de procedure non observables.
 - Un avantage de score statistique ne garantirait pas un rendement superieur au prix des grilles.
 

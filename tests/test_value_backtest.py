@@ -27,8 +27,14 @@ class ValueBacktestTests(unittest.TestCase):
         self.assertLessEqual(result.coverage_ci_low, result.prediction_interval_coverage)
         self.assertGreaterEqual(result.coverage_ci_high, result.prediction_interval_coverage)
         self.assertGreater(result.mean_prediction_interval_width, 0)
+        self.assertEqual(result.temporal_block_size, 12)
+        self.assertIn("block", result.inference_method)
         self.assertGreater(result.naive_mae, 0)
         self.assertLessEqual(result.mae_delta_ci_low, result.mae_delta_ci_high)
+
+    def test_block_size_must_be_positive(self) -> None:
+        with self.assertRaisesRegex(ValueError, "block_size"):
+            backtest_value([], min_train=200, folds=2, simulations=100, block_size=0)
 
 
 if __name__ == "__main__":

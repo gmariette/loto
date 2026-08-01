@@ -136,10 +136,11 @@ loto-lab participation-backtest data/loto.sqlite --min-train 500 --folds 3
 ```
 
 Le volume est estime par `gagnants du rang 9 / probabilite du rang 9`, puis une regression et un
-gradient boosting sont compares a une mediane historique par jeu et jour. Seul un modele dont
-l'intervalle apparie et la permutation corrigee battent cette reference est retenu. La
-retransformation logarithmique applique un facteur de smearing estime dans le passe de chaque fold;
-la sortie publie egalement le biais en niveau avant et apres calibration.
+gradient boosting sont compares a une mediane historique par jeu et jour. Le jackpot annonce est
+reconstruit comme le pool total lorsque plusieurs gagnants se le partagent. Seul un modele dont
+l'intervalle apparie et la permutation corrigee battent la reference est retenu. La retransformation
+logarithmique applique un facteur de smearing estime dans le passe de chaque fold; l'incertitude
+utilise ensuite les erreurs de niveau reellement observees hors echantillon, normalisees a moyenne 1.
 
 Evaluer automatiquement un jackpot annonce :
 
@@ -158,12 +159,13 @@ Backtester le moteur monetaire complet sur des folds futurs :
 
 ```bash
 loto-lab value-backtest data/loto.sqlite --game loto \
-  --min-train 500 --folds 3 --simulations 2000 --seed 42
+  --min-train 500 --folds 3 --simulations 2000 --block-size 12 --seed 42
 ```
 
 La cible est l'esperance reconstruite depuis le bareme futur publie, les codes et le volume estime
 par le rang 9. La sortie compare le modele a un calcul naif sans partage ni codes, teste le delta
-MAE par bootstrap/permutation, mesure la couverture predictive et compte les faux `eligible`.
+MAE par bootstrap et permutation en blocs temporels, mesure la couverture predictive avec le meme
+re-echantillonnage chronologique et compte les faux `eligible`.
 
 Generer dix grilles distinctes :
 

@@ -198,6 +198,7 @@ def command_value_backtest(args: argparse.Namespace) -> None:
             folds=args.folds,
             simulations=args.simulations,
             seed=args.seed,
+            block_size=args.block_size,
         ).to_dict()
     )
 
@@ -344,6 +345,12 @@ def build_parser() -> argparse.ArgumentParser:
     value_backtest.add_argument("--folds", type=int, default=3)
     value_backtest.add_argument("--simulations", type=int, default=500)
     value_backtest.add_argument("--seed", type=int, default=0)
+    value_backtest.add_argument(
+        "--block-size",
+        type=int,
+        default=12,
+        help="Longueur des blocs temporels pour l'inference statistique",
+    )
     value_backtest.set_defaults(handler=command_value_backtest)
 
     value = subparsers.add_parser(

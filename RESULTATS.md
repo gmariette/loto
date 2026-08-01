@@ -54,46 +54,48 @@ La commande `ml-predict` renvoie donc `abstention`.
 ## Participation et esperance monetaire
 
 Le nombre de gagnants du rang 9 permet d'estimer le nombre de grilles sur 1 519 tirages modernes.
-Sur 1 019 observations futures, le gradient boosting atteint une RMSE logarithmique de `0,2187`
-contre `0,2315` pour la mediane segmentee, soit `5,54 %` d'amelioration. Le delta MSE apparie a un
-IC 95 % de `[-0,01011 ; -0,00110]` et une p-value corrigee de Holm de `0,013`; il est qualifie.
-La regression Ridge, amelioree de `2,38 %`, ne se qualifie pas car son intervalle couvre zero.
+La version 0.5.0 reconstruit le jackpot annonce comme le pool total lors des 87 tirages modernes a
+plusieurs gagnants. Sur 1 019 observations futures, le gradient boosting atteint une RMSE
+logarithmique de `0,2154` contre `0,2315` pour la mediane segmentee, soit `6,97 %` d'amelioration.
+Le delta MSE apparie a un IC 95 % de `[-0,01114 ; -0,00324]` et une p-value corrigee de Holm de
+`0,003`; il est qualifie. Ridge progresse de `3,10 %` et se qualifie aussi, mais reste moins precis.
 
-La version 0.3.1 ajoute une retransformation calibree du logarithme. Sur les folds externes, le
-biais agrege en niveau du gradient boosting passe de `-4,51 %` a `-3,08 %`; les facteurs sont
-calcules uniquement dans le passe de chaque fold. Le rapport donne aussi les bornes de jackpot
-observees afin de distinguer interpolation et extrapolation.
+La retransformation calibree du logarithme porte le biais agrege en niveau du gradient boosting de
+`-4,65 %` brut a `-3,32 %`; les facteurs sont calcules uniquement dans le passe de chaque fold.
+L'incertitude n'impose plus une loi normale: elle re-echantillonne 1 019 erreurs multiplicatives
+hors echantillon, normalisees a moyenne 1.
 
-Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,41 millions` de grilles, `0,283`
+Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,38 millions` de grilles, `0,282`
 co-gagnant moyen et un facteur de partage du jackpot de `0,871`. Les petits rangs sont maintenant
 agreges au niveau tirage par une moyenne, methode adaptee a une esperance, au lieu de medianes rang
 par rang. Avec
-environ `0,037 EUR` de codes, l'esperance vaut `1,304 EUR` pour `2,20 EUR`, soit un ROI de `59,29 %`.
+environ `0,037 EUR` de codes, l'esperance vaut `1,305 EUR` pour `2,20 EUR`, soit un ROI de `59,32 %`.
 
 Le bootstrap predictif selectionne une fenetre recente de baremes dans une validation temporelle,
 puis echantillonne un prochain bareme complet et l'erreur de participation. Son IC 95 %
-`[1,104 ; 1,655]` est volontairement plus large que l'ancien intervalle d'estimation. Le
-seuil central dynamique vaut `30,281 M EUR`; la borne basse atteint seulement le prix vers
-`36,186 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
+`[1,107 ; 1,656]` est volontairement plus large que l'ancien intervalle d'estimation. Le
+seuil central dynamique vaut `30,227 M EUR`; la borne basse atteint seulement le prix vers
+`35,958 M EUR`. Les deux depassent le jackpot Loto maximal de `30 M EUR` observe dans les archives
 et sont marques comme extrapolations. La decision reste `no_bet`.
 
 ## Backtest bout en bout de la valeur
 
-La version 0.4.0 impose une coupure stricte avant toute date cible et ajoute `value-backtest`.
+La version 0.5.0 conserve la coupure stricte avant toute date cible et durcit `value-backtest`.
 Trois folds bloques evaluent 983 tirages Loto du 20 avril 2020 au 29 juillet 2026. La cible est
 l'esperance du bareme observe, reconstruite avec les petits rangs, les codes et le volume du rang 9.
 
 | Mesure | Modele complet | Reference naive |
 |---|---:|---:|
-| Biais moyen | +0,00445 EUR | -0,00824 EUR |
-| MAE | 0,11165 EUR | 0,11666 EUR |
-| RMSE | 0,13766 EUR | 0,14613 EUR |
+| Biais moyen | +0,00475 EUR | -0,00752 EUR |
+| MAE | 0,11160 EUR | 0,11713 EUR |
+| RMSE | 0,13760 EUR | 0,14674 EUR |
 
-La MAE baisse de `4,30 %`. Le delta apparie vaut `-0,00501 EUR`, avec IC 95 %
-`[-0,00774 ; -0,00241]` et p de permutation `0,001`; l'amelioration face a la reference naive est
-qualifiee. Les fenetres de baremes `[50, 250, 50]`, choisies dans le passe de chaque fold, portent
-la couverture predictive a `93,69 %` contre `82,5 %` auparavant. Son IC de Wilson
-`[92,00 % ; 95,05 %]` contient la cible de 95 %, sans prouver une couverture parfaite.
+La MAE baisse de `4,72 %`. Le delta apparie vaut `-0,00553 EUR`. Un bootstrap en blocs contigus de
+12 tirages donne l'IC 95 % `[-0,00803 ; -0,00328]`; la permutation par blocs donne `p = 0,0005`.
+L'amelioration face a la reference naive reste donc qualifiee sans supposer les erreurs voisines
+independantes. Les fenetres de baremes `[50, 250, 50]`, choisies dans le passe de chaque fold,
+portent la couverture predictive a `93,90 %`. Son IC bootstrap par blocs
+`[92,37 % ; 95,42 %]` contient la cible de 95 %, sans prouver une couverture parfaite.
 
 Le moteur n'a emis aucun `eligible` et donc aucun faux positif. Trois baremes observes avaient une
 EV ponctuelle superieure au prix, tous refuses par la borne basse prudente. Ce resultat confirme

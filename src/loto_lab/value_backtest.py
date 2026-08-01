@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import random
 from dataclasses import asdict, dataclass
-from math import exp, sqrt
+from math import ceil, sqrt
 from statistics import fmean
 
 import numpy as np
 
 from .domain import Draw
-from .participation import fit_participation_forecaster, participation_observations
+from .participation import (
+    _advertised_jackpot,
+    fit_participation_forecaster,
+    participation_observations,
+)
 from .probability import rank_probabilities, total_outcomes
 from .value import (
     TICKET_PRICES,
@@ -44,6 +48,8 @@ class ValueBacktestResult:
     mae_delta_ci_high: float
     permutation_p_value: float
     qualified_against_naive: bool
+    inference_method: str
+    temporal_block_size: int
     prediction_interval_coverage: float
     coverage_ci_low: float
     coverage_ci_high: float
@@ -61,7 +67,7 @@ class ValueBacktestResult:
 
 def _draw_jackpot(draw: Draw) -> float | None:
     rank_1 = next((prize for prize in draw.prizes if prize.rank == 1), None)
-    return rank_1.payout if rank_1 and rank_1.payout and rank_1.payout > 0 else None
+    return _advertised_jackpot(draw) if rank_1 and rank_1.payout and rank_1.payout > 0 else None
 
 
 def _draw_ticket_count(draw: Draw, rank_9_probability: float) -> float | None:
@@ -71,18 +77,21 @@ def _draw_ticket_count(draw: Draw, rank_9_probability: float) -> float | None:
     return rank_9.winners / rank_9_probability
 
 
-def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
-    proportion = successes / total
-    denominator = 1 + z**2 / total
-    center = (proportion + z**2 / (2 * total)) / denominator
-    margin = (
-        z
-        * sqrt(proportion * (1 - proportion) / total + z**2 / (4 * total**2))
-        / denominator
-    )
-    low = 0.0 if successes == 0 else max(0.0, center - margin)
-    high = 1.0 if successes == total else min(1.0, center + margin)
-    return low, high
+def _moving_block_means(
+    values: np.ndarray,
+    simulations: int,
+    rng: np.random.Generator,
+    block_size: int,
+) -> np.ndarray:
+    size = len(values)
+    width = min(block_size, size)
+    blocks_needed = ceil(size / width)
+    means = []
+    for _ in range(simulations):
+        starts = rng.integers(0, size - width + 1, size=blocks_needed)
+        sample = np.concatenate([values[start : start + width] for start in starts])[:size]
+        means.append(float(sample.mean()))
+    return np.asarray(means)
 
 
 def backtest_value(
@@ -92,11 +101,14 @@ def backtest_value(
     folds: int = 3,
     simulations: int = 500,
     seed: int = 0,
+    block_size: int = 12,
 ) -> ValueBacktestResult:
     if game not in TICKET_PRICES:
         raise ValueError(f"Jeu inconnu: {game}")
-    if min_train < 200 or folds < 2 or simulations < 100:
-        raise ValueError("Il faut min_train >= 200, 2 folds et 100 simulations")
+    if min_train < 200 or folds < 2 or simulations < 100 or block_size < 1:
+        raise ValueError(
+            "Il faut min_train >= 200, 2 folds, 100 simulations et block_size >= 1"
+        )
     observations = participation_observations(draws)
     if len(observations) <= min_train:
         raise ValueError("Pas assez d'observations pour le backtest de valeur")
@@ -172,9 +184,9 @@ def backtest_value(
 
             samples = []
             for _ in range(simulations):
-                sample_tickets = forecast.estimated_tickets * exp(
-                    rng.gauss(0, 1) * forecast.backtest_log_rmse
-                    - 0.5 * forecast.backtest_log_rmse**2
+                sample_tickets = (
+                    forecast.estimated_tickets
+                    * forecaster.sample_ticket_multiplier(rng)
                 )
                 sample_pool = rng.choice(code_pools) if code_pools else 0.0
                 samples.append(
@@ -219,18 +231,23 @@ def backtest_value(
         [abs(error) - abs(naive) for error, naive in zip(errors, naive_errors, strict=True)]
     )
     significance_rng = np.random.default_rng(seed + 50_000)
-    bootstrap_deltas = np.asarray(
-        [
-            significance_rng.choice(
-                absolute_error_deltas, size=len(absolute_error_deltas), replace=True
-            ).mean()
-            for _ in range(simulations)
-        ]
+    effective_block_size = min(block_size, len(absolute_error_deltas))
+    bootstrap_deltas = _moving_block_means(
+        absolute_error_deltas,
+        simulations,
+        significance_rng,
+        effective_block_size,
     )
     observed_delta = float(absolute_error_deltas.mean())
     extreme = 0
     for _ in range(simulations):
-        signs = significance_rng.choice((-1.0, 1.0), size=len(absolute_error_deltas))
+        signs = np.repeat(
+            significance_rng.choice(
+                (-1.0, 1.0),
+                size=ceil(len(absolute_error_deltas) / effective_block_size),
+            ),
+            effective_block_size,
+        )[: len(absolute_error_deltas)]
         if float((absolute_error_deltas * signs).mean()) <= observed_delta:
             extreme += 1
     p_value = (extreme + 1) / (simulations + 1)
@@ -244,7 +261,15 @@ def backtest_value(
     ]
     eligible = [low > price for low in interval_lows]
     positives = [observed > price for observed in observed_values]
-    coverage_low, coverage_high = _wilson_interval(sum(coverage), len(coverage))
+    coverage_rate = sum(coverage) / len(coverage)
+    coverage_bootstrap = _moving_block_means(
+        np.asarray(coverage, dtype=float),
+        simulations,
+        significance_rng,
+        effective_block_size,
+    )
+    coverage_low = min(coverage_rate, float(np.quantile(coverage_bootstrap, 0.025)))
+    coverage_high = max(coverage_rate, float(np.quantile(coverage_bootstrap, 0.975)))
     return ValueBacktestResult(
         game=game,
         observations=len(predicted_values),
@@ -273,7 +298,9 @@ def backtest_value(
         mae_delta_ci_high=delta_high,
         permutation_p_value=p_value,
         qualified_against_naive=delta_high < 0 and p_value < 0.05,
-        prediction_interval_coverage=sum(coverage) / len(coverage),
+        inference_method="moving_block_bootstrap_and_block_sign_permutation",
+        temporal_block_size=effective_block_size,
+        prediction_interval_coverage=coverage_rate,
         coverage_ci_low=coverage_low,
         coverage_ci_high=coverage_high,
         prediction_interval_target=0.95,

@@ -75,6 +75,8 @@ class ParticipationForecast:
     training_jackpot_min: float
     training_jackpot_max: float
     extrapolated: bool
+    uncertainty_method: str
+    residual_observations: int
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -86,6 +88,7 @@ class ParticipationForecaster:
     champion: ParticipationBacktestResult
     model: Any | None
     smearing_factor: float
+    ticket_multipliers: tuple[float, ...]
 
     def forecast(
         self, jackpot: float, target_date: date, game: str = "loto"
@@ -129,7 +132,12 @@ class ParticipationForecaster:
             support_min,
             support_max,
             jackpot < support_min or jackpot > support_max,
+            "temporal_empirical_residuals",
+            len(self.ticket_multipliers),
         )
+
+    def sample_ticket_multiplier(self, rng: Any) -> float:
+        return float(rng.choice(self.ticket_multipliers))
 
 
 def participation_observations(draws: list[Draw]) -> list[ParticipationObservation]:
@@ -153,12 +161,19 @@ def participation_observations(draws: list[Draw]) -> list[ParticipationObservati
             ParticipationObservation(
                 draw.draw_date,
                 draw.game,
-                rank_1.payout,
+                _advertised_jackpot(draw),
                 rank_9.winners,
                 rank_9.winners / rank_9_probability,
             )
         )
     return sorted(observations, key=lambda item: (item.draw_date, item.game))
+
+
+def _advertised_jackpot(draw: Draw) -> float:
+    rank_1 = next(prize for prize in draw.prizes if prize.rank == 1)
+    assert rank_1.payout is not None
+    winners = rank_1.winners or 0
+    return rank_1.payout * winners if winners > 1 else rank_1.payout
 
 
 def _features(
@@ -402,6 +417,46 @@ def participation_backtest(
     ]
 
 
+def _temporal_ticket_multipliers(
+    observations: list[ParticipationObservation],
+    champion: ParticipationBacktestResult,
+    min_train: int,
+    folds: int,
+    seed: int,
+) -> tuple[float, ...]:
+    reference_date = observations[0].draw_date
+    x = _features(observations, reference_date)
+    y = np.log([item.estimated_tickets for item in observations])
+    dates = np.asarray([item.draw_date for item in observations], dtype=object)
+    eligible_dates = np.unique(dates[min_train:])
+    date_folds = [item for item in np.array_split(eligible_dates, folds) if len(item)]
+    residuals = []
+    model_seed_offset = (
+        list(MODEL_PARAMETERS).index(champion.model) * 1000 if champion.qualified else 0
+    )
+    for fold_number, test_dates in enumerate(date_folds):
+        train_indices = np.flatnonzero(dates < test_dates[0])
+        test_indices = np.flatnonzero(np.isin(dates, test_dates))
+        if champion.qualified:
+            model = _fit_model(
+                champion.model,
+                champion.selected_parameters[fold_number],
+                x[train_indices],
+                y[train_indices],
+                seed + model_seed_offset + fold_number,
+            )
+            predicted = model.predict(x[test_indices])
+        else:
+            predicted = _baseline_predictions(
+                [observations[index] for index in train_indices],
+                [observations[index] for index in test_indices],
+            )
+        residuals.extend(y[test_indices] - predicted)
+    level_errors = np.exp(np.asarray(residuals))
+    normalized = level_errors / level_errors.mean()
+    return tuple(float(value) for value in normalized)
+
+
 def fit_participation_forecaster(
     draws: list[Draw],
     min_train: int = 500,
@@ -431,7 +486,12 @@ def fit_participation_forecaster(
     else:
         calibration = 1.0
         model = None
-    return ParticipationForecaster(tuple(observations), champion, model, calibration)
+    multipliers = _temporal_ticket_multipliers(
+        observations, champion, min_train, folds, seed
+    )
+    return ParticipationForecaster(
+        tuple(observations), champion, model, calibration, multipliers
+    )
 
 
 def forecast_participation(
