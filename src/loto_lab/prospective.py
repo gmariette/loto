@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 from datetime import UTC, date, datetime, time
 from pathlib import Path
@@ -9,7 +10,7 @@ from statistics import fmean
 from zoneinfo import ZoneInfo
 
 from . import __version__
-from .domain import Draw
+from .domain import Draw, PrizeResult
 from .probability import rank_probabilities, total_outcomes
 from .value import ValueReport, _lower_rank_ev, _poisson_share_factor
 from .value_backtest import _draw_jackpot, _draw_ticket_count
@@ -17,6 +18,8 @@ from .value_backtest import _draw_jackpot, _draw_ticket_count
 GENESIS_HASH = "0" * 64
 PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
 LOTO_RECORDING_CUTOFF = time(20, 15)
+EVIDENCE_FORMAT = "loto-lab.prospective-ledger"
+EVIDENCE_SCHEMA_VERSION = 1
 
 LEDGER_SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -306,13 +309,18 @@ def _observed_schedule_ev(draw: Draw) -> float | None:
 def score_pending_forecasts(
     ledger: str | Path,
     draws: list[Draw],
+    *,
+    current_time: datetime | None = None,
 ) -> dict[str, object]:
     by_target = {
         (draw.game, draw.draw_date.isoformat()): draw
         for draw in draws
         if draw.draw_date is not None
     }
-    scored_at = datetime.now(UTC).isoformat()
+    scoring_time = current_time or datetime.now(UTC)
+    if scoring_time.tzinfo is None:
+        raise ValueError("L'heure de scoring doit inclure un fuseau horaire")
+    scored_at = scoring_time.astimezone(UTC).isoformat()
     connection = _connect(ledger)
     scored = []
     skipped = []
@@ -331,6 +339,11 @@ def score_pending_forecasts(
         previous_hash = str(previous["record_hash"]) if previous else GENESIS_HASH
         for forecast in pending:
             key = (str(forecast["game"]), str(forecast["target_date"]))
+            if _recording_is_open(date.fromisoformat(key[1]), scoring_time):
+                skipped.append(
+                    {"forecast_id": int(forecast["id"]), "reason": "tirage_non_cloture"}
+                )
+                continue
             draw = by_target.get(key)
             if draw is None:
                 skipped.append({"forecast_id": int(forecast["id"]), "reason": "tirage_absent"})
@@ -502,8 +515,287 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
             "false_positives": sum(int(row["false_positive"]) for row in scores),
             "false_negatives": sum(int(row["false_negative"]) for row in scores),
             "interpretation": (
-                "Publier le forecast_head_hash avant le tirage pour ancrer la chronologie."
+                "Publier forecast_head_hash avant le tirage, puis score_head_hash apres scoring."
             ),
         }
     finally:
         connection.close()
+
+
+def export_ledger_evidence(ledger: str | Path) -> dict[str, object]:
+    verification = verify_ledger(ledger)
+    if not verification["valid"]:
+        raise ValueError("Le registre est invalide; export refuse")
+    connection = _connect(ledger)
+    try:
+        forecasts = []
+        for row in connection.execute("SELECT * FROM value_forecasts ORDER BY id"):
+            forecasts.append(
+                {
+                    "id": int(row["id"]),
+                    "created_at": str(row["created_at"]),
+                    "model_version": str(row["model_version"]),
+                    "game": str(row["game"]),
+                    "target_date": str(row["target_date"]),
+                    "training_last_date": str(row["training_last_date"]),
+                    "jackpot": float(row["jackpot"]),
+                    "estimated_ev": float(row["estimated_ev"]),
+                    "ev_ci_low": float(row["ev_ci_low"]),
+                    "ev_ci_high": float(row["ev_ci_high"]),
+                    "ticket_price": float(row["ticket_price"]),
+                    "decision": str(row["decision"]),
+                    "payload": json.loads(str(row["report_json"])),
+                    "previous_hash": str(row["previous_hash"]),
+                    "record_hash": str(row["record_hash"]),
+                }
+            )
+        scores = []
+        for row in connection.execute("SELECT * FROM value_scores ORDER BY id"):
+            scores.append(
+                {
+                    "id": int(row["id"]),
+                    "forecast_id": int(row["forecast_id"]),
+                    "scored_at": str(row["scored_at"]),
+                    "observed_schedule_ev": float(row["observed_schedule_ev"]),
+                    "error": float(row["error"]),
+                    "absolute_error": float(row["absolute_error"]),
+                    "covered": int(row["covered"]),
+                    "observed_positive": int(row["observed_positive"]),
+                    "false_positive": int(row["false_positive"]),
+                    "false_negative": int(row["false_negative"]),
+                    "draw": json.loads(str(row["draw_json"])),
+                    "previous_hash": str(row["previous_hash"]),
+                    "record_hash": str(row["record_hash"]),
+                }
+            )
+        return {
+            "format": EVIDENCE_FORMAT,
+            "schema_version": EVIDENCE_SCHEMA_VERSION,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "forecasts": forecasts,
+            "scores": scores,
+            "ledger": ledger_info(ledger),
+        }
+    finally:
+        connection.close()
+
+
+def _draw_from_evidence(payload: dict[str, object]) -> Draw:
+    draw_date = payload.get("draw_date")
+    return Draw(
+        tuple(int(number) for number in payload["main"]),  # type: ignore[arg-type]
+        int(payload["chance"]),
+        date.fromisoformat(str(draw_date)) if draw_date else None,
+        str(payload["game"]),
+        tuple(
+            PrizeResult(
+                int(prize["rank"]),
+                int(prize["winners"]) if prize.get("winners") is not None else None,
+                float(prize["payout"]) if prize.get("payout") is not None else None,
+            )
+            for prize in payload["prizes"]  # type: ignore[union-attr]
+        ),
+        int(payload["code_winners"]) if payload.get("code_winners") is not None else None,
+        float(payload["code_payout"]) if payload.get("code_payout") is not None else None,
+    )
+
+
+def _same_number(left: float, right: float) -> bool:
+    return math.isclose(left, right, rel_tol=1e-12, abs_tol=1e-12)
+
+
+def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
+    errors: list[str] = []
+    if evidence.get("format") != EVIDENCE_FORMAT:
+        errors.append("format")
+    if evidence.get("schema_version") != EVIDENCE_SCHEMA_VERSION:
+        errors.append("schema_version")
+    forecasts_value = evidence.get("forecasts")
+    scores_value = evidence.get("scores")
+    if not isinstance(forecasts_value, list):
+        errors.append("forecasts")
+        forecasts_value = []
+    if not isinstance(scores_value, list):
+        errors.append("scores")
+        scores_value = []
+
+    previous_hash = GENESIS_HASH
+    forecast_hashes: dict[int, str] = {}
+    forecast_records: dict[int, dict[str, object]] = {}
+    targets: set[tuple[str, str]] = set()
+    for index, item in enumerate(forecasts_value, start=1):
+        label = f"forecast:{index}"
+        if not isinstance(item, dict):
+            errors.append(f"{label}:malformed")
+            continue
+        try:
+            forecast_id = int(item["id"])
+            payload = item["payload"]
+            if not isinstance(payload, dict):
+                raise TypeError
+            record_hash = str(item["record_hash"])
+            expected = _forecast_hash(
+                created_at=str(item["created_at"]),
+                model_version=str(item["model_version"]),
+                game=str(item["game"]),
+                target_date=str(item["target_date"]),
+                training_last_date=str(item["training_last_date"]),
+                jackpot=float(item["jackpot"]),
+                estimated_ev=float(item["estimated_ev"]),
+                ev_ci_low=float(item["ev_ci_low"]),
+                ev_ci_high=float(item["ev_ci_high"]),
+                ticket_price=float(item["ticket_price"]),
+                decision=str(item["decision"]),
+                report_json=_canonical_json(payload),
+                previous_hash=previous_hash,
+            )
+            if str(item["previous_hash"]) != previous_hash or record_hash != expected:
+                errors.append(f"{label}:hash")
+            if forecast_id in forecast_hashes:
+                errors.append(f"{label}:duplicate_id")
+            target = (str(item["game"]), str(item["target_date"]))
+            if target in targets:
+                errors.append(f"{label}:duplicate_target")
+            created_at = datetime.fromisoformat(str(item["created_at"]))
+            target_date = date.fromisoformat(target[1])
+            training_last_date = date.fromisoformat(str(item["training_last_date"]))
+            if (
+                created_at.tzinfo is None
+                or not _recording_is_open(target_date, created_at)
+                or training_last_date >= target_date
+            ):
+                errors.append(f"{label}:chronology")
+            report = payload.get("report")
+            if not isinstance(report, dict):
+                errors.append(f"{label}:report")
+            else:
+                comparisons = {
+                    "game": str(item["game"]),
+                    "target_date": str(item["target_date"]),
+                    "training_last_date": str(item["training_last_date"]),
+                    "decision": str(item["decision"]),
+                }
+                if any(str(report.get(key)) != value for key, value in comparisons.items()):
+                    errors.append(f"{label}:report_mismatch")
+                numeric_comparisons = {
+                    "jackpot": float(item["jackpot"]),
+                    "estimated_ev": float(item["estimated_ev"]),
+                    "ev_ci_low": float(item["ev_ci_low"]),
+                    "ev_ci_high": float(item["ev_ci_high"]),
+                    "ticket_price": float(item["ticket_price"]),
+                }
+                if any(
+                    not _same_number(float(report.get(key)), value)
+                    for key, value in numeric_comparisons.items()
+                ):
+                    errors.append(f"{label}:report_mismatch")
+            forecast_hashes[forecast_id] = record_hash
+            forecast_records[forecast_id] = item
+            targets.add(target)
+            previous_hash = record_hash
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{label}:malformed")
+    forecast_head = previous_hash
+
+    previous_hash = GENESIS_HASH
+    scored_forecasts: set[int] = set()
+    score_ids: set[int] = set()
+    for index, item in enumerate(scores_value, start=1):
+        label = f"score:{index}"
+        if not isinstance(item, dict):
+            errors.append(f"{label}:malformed")
+            continue
+        try:
+            score_id = int(item["id"])
+            forecast_id = int(item["forecast_id"])
+            forecast = forecast_records[forecast_id]
+            metrics: dict[str, float | int] = {
+                "observed_schedule_ev": float(item["observed_schedule_ev"]),
+                "error": float(item["error"]),
+                "absolute_error": float(item["absolute_error"]),
+                "covered": int(item["covered"]),
+                "observed_positive": int(item["observed_positive"]),
+                "false_positive": int(item["false_positive"]),
+                "false_negative": int(item["false_negative"]),
+            }
+            draw_payload = item["draw"]
+            if not isinstance(draw_payload, dict):
+                raise TypeError
+            record_hash = str(item["record_hash"])
+            expected = _score_hash(
+                str(item["scored_at"]),
+                forecast_hashes[forecast_id],
+                previous_hash,
+                _canonical_json(draw_payload),
+                metrics,
+            )
+            if str(item["previous_hash"]) != previous_hash or record_hash != expected:
+                errors.append(f"{label}:hash")
+            if forecast_id in scored_forecasts:
+                errors.append(f"{label}:duplicate_forecast")
+            if score_id in score_ids:
+                errors.append(f"{label}:duplicate_id")
+            draw = _draw_from_evidence(draw_payload)
+            scored_at = datetime.fromisoformat(str(item["scored_at"]))
+            target_date = date.fromisoformat(str(forecast["target_date"]))
+            if scored_at.tzinfo is None or _recording_is_open(target_date, scored_at):
+                errors.append(f"{label}:chronology")
+            if draw.game != forecast["game"] or draw.draw_date != target_date:
+                errors.append(f"{label}:draw_target")
+            observed_ev = _observed_schedule_ev(draw)
+            if observed_ev is None:
+                errors.append(f"{label}:incomplete_draw")
+            else:
+                estimated_ev = float(forecast["estimated_ev"])
+                ticket_price = float(forecast["ticket_price"])
+                eligible = str(forecast["decision"]) == "eligible"
+                observed_positive = observed_ev > ticket_price
+                expected_metrics: dict[str, float | int] = {
+                    "observed_schedule_ev": observed_ev,
+                    "error": estimated_ev - observed_ev,
+                    "absolute_error": abs(estimated_ev - observed_ev),
+                    "covered": int(
+                        float(forecast["ev_ci_low"])
+                        <= observed_ev
+                        <= float(forecast["ev_ci_high"])
+                    ),
+                    "observed_positive": int(observed_positive),
+                    "false_positive": int(eligible and not observed_positive),
+                    "false_negative": int(not eligible and observed_positive),
+                }
+                for key, expected_value in expected_metrics.items():
+                    actual = metrics[key]
+                    matches = (
+                        _same_number(float(actual), float(expected_value))
+                        if isinstance(expected_value, float)
+                        else actual == expected_value
+                    )
+                    if not matches:
+                        errors.append(f"{label}:metric:{key}")
+            scored_forecasts.add(forecast_id)
+            score_ids.add(score_id)
+            previous_hash = record_hash
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{label}:malformed")
+    score_head = previous_hash
+
+    manifest = evidence.get("ledger")
+    if not isinstance(manifest, dict):
+        errors.append("ledger")
+    else:
+        expected_manifest = {
+            "forecasts": len(forecasts_value),
+            "scores": len(scores_value),
+            "forecast_head_hash": forecast_head,
+            "score_head_hash": score_head,
+        }
+        if any(manifest.get(key) != value for key, value in expected_manifest.items()):
+            errors.append("ledger:mismatch")
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "forecasts": len(forecasts_value),
+        "scores": len(scores_value),
+        "forecast_head_hash": forecast_head,
+        "score_head_hash": score_head,
+    }

@@ -155,7 +155,9 @@ partage Poisson du jackpot et la valeur des codes historiques. `--popularity-fac
 popularite relative d'une combinaison;
 `--co-winners` remplace explicitement le modele pour un scenario manuel. Le rapport distingue le
 jackpot d'equilibre central du jackpot ou la borne basse atteint le prix, recalcule la participation
-a chaque niveau et signale toute extrapolation au-dela des jackpots observes.
+a chaque niveau et signale toute extrapolation au-dela des jackpots observes. Depuis la version
+0.8.0, `expected_return_rate` designe `EV / prix` et `estimated_roi` designe le rendement net
+`(EV - prix) / prix`; un taux de retour de 49 % correspond donc a un ROI net de -51 %.
 
 Backtester le moteur monetaire complet sur des folds futurs :
 
@@ -193,12 +195,16 @@ ne suffit pas, car son historique complet pourrait etre recree.
 Apres actualisation des archives et de la base des tirages :
 
 ```bash
-loto-lab value-score data/loto.sqlite --ledger data/prospective.sqlite
+loto-lab value-score data/loto.sqlite --ledger data/prospective.sqlite \
+  --export evidence/prospective-ledger.json
+loto-lab ledger-verify evidence/prospective-ledger.json
 ```
 
 Le score utilise le bareme, les codes et le volume deduit du rang 9. `ledger-info` ne calcule biais,
-MAE, couverture et erreurs de decision que sur ces previsions figees. Le premier ancrage public est
-documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
+MAE, couverture et erreurs de decision que sur ces previsions figees. Le bundle autonome contient
+les previsions, les tirages, les scores et les deux chaines; `ledger-verify` recalcule aussi chaque
+metrique depuis le bareme sans acceder a SQLite. Un score est refuse avant 20 h 15, heure de Paris,
+le jour cible. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
 
 Generer dix grilles distinctes :
 

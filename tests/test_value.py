@@ -19,6 +19,10 @@ class ValueTests(unittest.TestCase):
         self.assertEqual(result.reference_draws, 10)
         self.assertGreater(result.estimated_ev, 0)
         self.assertGreater(result.fair_jackpot, 0)
+        self.assertAlmostEqual(
+            result.expected_return_rate, result.estimated_ev / result.ticket_price
+        )
+        self.assertAlmostEqual(result.estimated_roi, result.expected_return_rate - 1)
 
     def test_automatic_participation_models_sharing_and_codes(self) -> None:
         draws = [

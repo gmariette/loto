@@ -25,7 +25,13 @@ from .probability import (
     rank_probabilities,
     total_outcomes,
 )
-from .prospective import ledger_info, record_value_forecast, score_pending_forecasts
+from .prospective import (
+    export_ledger_evidence,
+    ledger_info,
+    record_value_forecast,
+    score_pending_forecasts,
+    verify_evidence,
+)
 from .simulation import load_payouts, simulate_bankroll
 from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequency_outliers
 from .strategy import anti_crowd_score, generate_tickets
@@ -212,16 +218,47 @@ def command_value_record(args: argparse.Namespace) -> None:
 
 def command_value_score(args: argparse.Namespace) -> None:
     draws = load_draws_many(args.data)
-    _print_json(
-        {
-            **score_pending_forecasts(args.ledger, draws),
-            "ledger": ledger_info(args.ledger),
-        }
-    )
+    payload = {
+        **score_pending_forecasts(args.ledger, draws),
+        "ledger": ledger_info(args.ledger),
+    }
+    if args.export:
+        evidence = export_ledger_evidence(args.ledger)
+        args.export.parent.mkdir(parents=True, exist_ok=True)
+        args.export.write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
+        payload["evidence_export"] = str(args.export)
+        payload["evidence_verification"] = verify_evidence(evidence)
+    _print_json(payload)
 
 
 def command_ledger_info(args: argparse.Namespace) -> None:
     _print_json(ledger_info(args.ledger))
+
+
+def command_ledger_export(args: argparse.Namespace) -> None:
+    evidence = export_ledger_evidence(args.ledger)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(evidence, ensure_ascii=False, indent=2, default=str) + "\n",
+        encoding="utf-8",
+    )
+    _print_json({"output": str(args.output), **verify_evidence(evidence)})
+
+
+def command_ledger_verify(args: argparse.Namespace) -> None:
+    try:
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Preuve illisible: {error}") from error
+    if not isinstance(evidence, dict):
+        raise SystemExit("Preuve invalide: la racine JSON doit etre un objet")
+    result = verify_evidence(evidence)
+    _print_json(result)
+    if not result["valid"]:
+        raise SystemExit(1)
 
 
 def command_participation_backtest(args: argparse.Namespace) -> None:
@@ -459,6 +496,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     value_score.add_argument("data", type=Path, nargs="+")
     value_score.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_score.add_argument(
+        "--export",
+        type=Path,
+        help="Exporter un bundle autonome apres le scoring",
+    )
     value_score.set_defaults(handler=command_value_score)
 
     ledger = subparsers.add_parser(
@@ -467,6 +509,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ledger.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
     ledger.set_defaults(handler=command_ledger_info)
+
+    ledger_export = subparsers.add_parser(
+        "ledger-export",
+        help="Exporter toutes les preuves du registre dans un bundle JSON",
+    )
+    ledger_export.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    ledger_export.add_argument("--output", type=Path, required=True)
+    ledger_export.set_defaults(handler=command_ledger_export)
+
+    ledger_verify = subparsers.add_parser(
+        "ledger-verify",
+        help="Verifier un bundle prospectif sans acceder a la base SQLite",
+    )
+    ledger_verify.add_argument("evidence", type=Path)
+    ledger_verify.set_defaults(handler=command_ledger_verify)
 
     generate = subparsers.add_parser("generate", help="Generer des grilles distinctes")
     generate.add_argument("--count", type=int, default=5)

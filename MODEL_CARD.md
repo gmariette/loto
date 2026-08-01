@@ -30,6 +30,7 @@ dix classes supplementaire.
 - Inference du moteur de valeur par blocs contigus de 12 tirages pour conserver la dependance locale.
 - Reentrainement toutes les 52 dates et calibration interne de l'horizon et des queues predictives.
 - Registre prospectif append-only, chaine SHA-256 et scoring seulement apres publication du bareme.
+- Bundle JSON autonome: verification des chaines et recalcul des metriques depuis chaque bareme.
 
 ## Limites
 
@@ -44,6 +45,8 @@ dix classes supplementaire.
 - Changements possibles de materiel et de procedure non observables.
 - Un avantage de score statistique ne garantirait pas un rendement superieur au prix des grilles.
 - Une chaine locale ne prouve sa chronologie que si son hash est publie avant le tirage.
+- Le bundle prouve la coherence interne, pas l'authenticite du bareme; sa source officielle reste
+  indispensable.
 - Une seule prevision prospective est actuellement en attente; aucune performance future ne peut
   encore etre estimee.
 

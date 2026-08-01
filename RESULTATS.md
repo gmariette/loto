@@ -68,8 +68,8 @@ hors echantillon, normalisees a moyenne 1.
 Pour un Loto a 10 M EUR le 1er aout 2026, le modele estime `5,38 millions` de grilles, `0,282`
 co-gagnant moyen et un facteur de partage du jackpot de `0,871`. Les petits rangs sont maintenant
 agreges au niveau tirage par une moyenne, methode adaptee a une esperance, au lieu de medianes rang
-par rang. Avec
-environ `0,037 EUR` de codes, l'esperance vaut `1,305 EUR` pour `2,20 EUR`, soit un ROI de `59,32 %`.
+par rang. Avec environ `0,037 EUR` de codes, l'esperance vaut `1,305 EUR` pour `2,20 EUR`, soit un
+taux de retour de `59,32 %` et un ROI net de `-40,68 %`.
 
 La version 0.6.0 selectionne conjointement l'horizon de baremes et une probabilite de queue dans
 une validation temporelle. Pour ce rapport, 1 176 tirages et une queue de 1 % donnent `95,59 %` de
@@ -127,13 +127,20 @@ du jour et avec le jackpot officiel de 5 M EUR. Elle utilise les donnees arretee
 |---|---:|
 | EV | 1,08410 EUR |
 | Intervalle predictif | [0,81633 ; 1,41460] EUR |
-| ROI estime | 49,28 % |
+| Taux de retour | 49,28 % |
+| ROI net | -50,72 % |
 | Decision | `no_bet` |
 
 Le hash public est
 `39d08472180461bb0413a405fb705bf8e0bd8cc01522a4477132c870432abbc7`. La preuve complete est
 dans `evidence/value-2026-08-01.json`. Aucun score prospectif n'est encore disponible: annoncer une
 MAE ou une couverture prospective avec zero resultat serait trompeur.
+
+La version 0.8.0 corrige l'ambiguite de vocabulaire du rapport: le champ v0.7
+`estimated_roi = EV / prix` etait en realite un taux de retour. Les nouveaux rapports publient
+`expected_return_rate = EV / prix` et `estimated_roi = (EV - prix) / prix`. La preuve v0.7 reste
+intacte et cette correction est explicite plutot que retroactive. Un bundle exportable permet en
+outre de verifier hors SQLite les deux chaines et de recalculer chaque score depuis son bareme.
 
 ## Regime historique : 6/49 + complementaire
 

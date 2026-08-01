@@ -185,3 +185,13 @@ Apres publication des rapports, `value-score` reconstruit la meme cible d'EV que
 ajoute un score chaine distinct. Biais, MAE, couverture et faux signaux prospectifs ne deviennent
 interpretables qu'apres un echantillon suffisant; le premier enregistrement ne permet aucune
 conclusion.
+
+La version 0.8.0 exporte un bundle autonome contenant chaque champ hache. Le verificateur reconstruit
+les deux chaines, controle la coherence entre colonnes et rapport, puis recalcule l'EV observee,
+l'erreur, la couverture et les erreurs de decision depuis le bareme inclus. Cela detecte une
+metrique incoherente meme si son hash a ete recalcule. L'authenticite du bareme exige toujours une
+comparaison avec la publication officielle.
+
+Le scoring applique la meme barriere temporelle que l'enregistrement: un tirage cible ne peut pas
+etre note avant 20 h 15, heure de Paris. Le bundle verifie egalement que le jeu et la date du bareme
+correspondent a la prevision et que l'heure de scoring est posterieure a cette cloture.
