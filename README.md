@@ -102,18 +102,20 @@ dans les donnees fournies.
 
 ### Validation ML
 
-Executer les modeles bayesien, logistique et gradient boosting :
+Executer les modeles bayesien cumulatif, bayesien temporel, logistique et gradient boosting sur le
+jeu cible uniquement :
 
 ```bash
 loto-lab ml-backtest data/loto.sqlite \
-  --min-history 50 --min-train 500 --folds 3 --simulations 2000 \
+  --game loto --min-history 50 --min-train 500 --folds 3 --simulations 2000 \
   --output reports/ml-backtest.json
 ```
 
 Le protocole utilise une validation temporelle imbriquee : chaque fold externe mesure la
 generalisation et une fenetre interne choisit les hyperparametres. Les variables incluent les
-frequences sur 10/50/200 tirages, le retard, les paires avec la date precedente, le jour, le type
-de jeu, la tendance temporelle et un effet regulier par numero. Les probabilites sont reprojetees
+frequences sur 10/50/200 tirages, le retard, les paires avec la date precedente, le jour, la
+tendance temporelle et un effet regulier par numero. Le challenger bayesien temporel choisit sa
+fenetre et son a priori dans le passe. Les probabilites sont reprojetees
 pour que leur somme soit exactement 5. Une intensite choisie dans la validation interne retracte
 ensuite chaque modele vers l'uniforme; une intensite nulle annule tout signal non reproductible.
 
@@ -126,6 +128,9 @@ loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
 Le programme ne renvoie des numeros que si la borne haute a 95 % du delta Brier est negative et
 si le test de permutation reste significatif apres correction de Holm. `--force` existe pour les
 experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
+Elle publie aussi le jeu, la cible, la derniere date d'apprentissage, le delta Brier, son intervalle,
+la p-value corrigee et l'amplitude des probabilites afin qu'une grille ne soit jamais detachee de sa
+preuve de non-qualification.
 
 ### Esperance monetaire
 

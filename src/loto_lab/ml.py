@@ -213,6 +213,11 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
         {"prior_strength": 200.0},
         {"prior_strength": 1000.0},
     ),
+    "rolling_bayesian": tuple(
+        {"window": window, "prior_strength": prior_strength}
+        for window in (10, 50, 200)
+        for prior_strength in (20.0, 100.0, 500.0)
+    ),
     "logistic": ({"c": 0.01}, {"c": 0.1}, {"c": 1.0}),
     "gradient_boosting": (
         {"learning_rate": 0.03, "max_leaf_nodes": 7, "l2": 1.0},
@@ -245,6 +250,13 @@ def _fit_predict(
         counts = x_test[:, :, 1]
         prior = float(parameters["prior_strength"])
         raw = (counts + prior * (5 / 49)) / (history + prior)
+    elif model_name == "rolling_bayesian":
+        window = int(parameters["window"])
+        feature_index = FEATURE_NAMES.index(f"frequency_{window}_delta")
+        history = np.minimum(x_test[:, :, 0], window)
+        frequencies = x_test[:, :, feature_index] + (5 / 49)
+        prior = float(parameters["prior_strength"])
+        raw = (frequencies * history + prior * (5 / 49)) / (history + prior)
     else:
         train_x = x_train.reshape(-1, x_train.shape[-1])
         train_y = y_train.reshape(-1)
@@ -349,6 +361,7 @@ def _select_parameters(
             parameters = {**model_parameters, "uniform_blend": blend_weight}
             if best is None or score < best[0]:
                 best = (score, parameters)
+    assert best is not None
     return dict(best[1])
 
 
@@ -466,14 +479,23 @@ def nested_ml_backtest(
     outer_folds: int = 3,
     simulations: int = 2_000,
     seed: int = 0,
-    models: tuple[str, ...] = ("bayesian", "logistic", "gradient_boosting"),
+    game: str | None = None,
+    models: tuple[str, ...] = (
+        "bayesian",
+        "rolling_bayesian",
+        "logistic",
+        "gradient_boosting",
+    ),
 ) -> list[MLBacktestResult]:
     if outer_folds < 2 or simulations < 100:
         raise ValueError("Il faut au moins 2 folds et 100 simulations")
     unknown = set(models).difference(MODEL_PARAMETERS)
     if unknown:
         raise ValueError(f"Modeles inconnus: {sorted(unknown)}")
-    dataset = build_feature_dataset(draws, min_history)
+    selected_draws = [draw for draw in draws if game is None or draw.game == game]
+    if not selected_draws:
+        raise ValueError(f"Aucun tirage disponible pour {game}")
+    dataset = build_feature_dataset(selected_draws, min_history)
     results = [
         _backtest_one_model(
             dataset, model, min_train, outer_folds, simulations, seed + index * 10_000
@@ -491,7 +513,10 @@ def predict_next_draw(
     force: bool = False,
     seed: int = 0,
 ) -> dict[str, object]:
-    dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
+    selected_draws = [draw for draw in draws if draw.game == game]
+    if not selected_draws:
+        raise ValueError(f"Aucun tirage disponible pour {game}")
+    dated = [draw.draw_date for draw in selected_draws if draw.draw_date is not None]
     if dated and target_date <= max(dated):
         raise ValueError("ml-predict exige une date posterieure au dernier tirage fourni")
     qualified = [result for result in results if result.qualified]
@@ -500,13 +525,16 @@ def predict_next_draw(
         if not force:
             return {
                 "status": "abstention",
+                "game": game,
+                "target_date": target_date,
+                "training_last_date": max(dated) if dated else None,
                 "reason": "Aucun modele ne bat l'uniforme avec un intervalle a 95% et Holm < 5%.",
             }
         qualified = list(results)
         status = "forced_experimental"
     champion = min(qualified, key=lambda result: result.mean_brier_delta)
-    dataset = build_feature_dataset(draws)
-    target = next_feature_matrix(draws, target_date, game)
+    dataset = build_feature_dataset(selected_draws)
+    target = next_feature_matrix(selected_draws, target_date, game)
     predicted = _fit_predict(
         champion.model,
         champion.final_parameters,
@@ -522,10 +550,22 @@ def predict_next_draw(
         top = tuple(sorted(int(index + 1) for index in np.argsort(predicted)[-5:]))
     return {
         "status": status,
+        "game": game,
+        "target_date": target_date,
+        "training_last_date": max(dated) if dated else None,
         "model": champion.model,
         "parameters": champion.final_parameters,
+        "validation": {
+            "test_draws": champion.test_draws,
+            "mean_brier_delta": champion.mean_brier_delta,
+            "delta_ci_low": champion.delta_ci_low,
+            "delta_ci_high": champion.delta_ci_high,
+            "adjusted_p_value": champion.adjusted_p_value,
+            "qualified": champion.qualified,
+        },
         "numbers": top,
         "chance": rng.randint(1, 10),
+        "probability_spread": float(np.ptp(predicted)),
         "marginal_probabilities": {
             number: float(predicted[number - 1]) for number in sorted(top)
         },

@@ -29,27 +29,30 @@ tirages servent de minimum d'apprentissage, puis 2 359 tirages sont evalues.
 | Frequence decroissante, demi-vie 50 | +0,0002650 | 1,35e-24 | 0,5100 |
 | Frequence decroissante, demi-vie 200 | +0,0001452 | 8,39e-16 | 0,5100 |
 
-Un delta positif est moins bon. Les trois modeles historiques sont donc significativement moins
+Un delta positif est moins bon. Les trois modeles historiques etaient donc significativement moins
 bien calibres que la probabilite uniforme `5/49`. Le leger surplus de Top-5 du premier modele ne
 compense pas ses probabilites moins bien calibrees et n'implique aucun avantage monetaire.
 
 ## Validation ML imbriquee
 
-La version 0.3 ajoute aux 63 variables une retraction vers l'uniforme choisie dans chaque fenetre
-interne. Trois folds externes, 2 000 bootstraps et permutations, puis une correction de Holm entre
-modeles evaluent 2 309 tirages jamais utilises pour ajuster le fold correspondant.
+La version 0.13 ajoute un posterior bayesien temporel dont la fenetre 10/50/200 et la force de
+l'a priori sont choisies dans chaque fenetre interne. Elle isole aussi le jeu cible au lieu de
+melanger Loto, Super Loto et Grand Loto. Trois folds externes, 2 000 bootstraps et permutations,
+puis une correction de Holm entre modeles evaluent 2 238 tirages Loto jamais utilises pour ajuster
+le fold correspondant.
 
 | Modele | Delta Brier | IC 95 % du delta | Log-loss | Hits Top-5 | Qualifie |
 |---|---:|---:|---:|---:|---:|
-| Bayesien retracte | +0,00000498 | [-0,00000022 ; +0,00001013] | 0,32957 | 0,5058 | non |
-| Logistique retractee | +0,00001011 | [-0,00000422 ; +0,00002396] | 0,32960 | 0,5154 | non |
-| Gradient boosting retracte | +0,00002437 | [+0,00000961 ; +0,00003891] | 0,32968 | 0,5032 | non |
+| Bayesien cumulatif | +0,00000478 | [-0,00000063 ; +0,00001026] | 0,32957 | 0,5121 | non |
+| Bayesien temporel | +0,00000143 | [-0,00000190 ; +0,00000485] | 0,32955 | 0,5000 | non |
+| Logistique retractee | +0,00000321 | [-0,00000675 ; +0,00001362] | 0,32956 | 0,5232 | non |
+| Gradient boosting retracte | 0 | [0 ; 0] | 0,32954 | 0,5098 | non |
 
-La log-loss uniforme vaut `0,32954`. La retraction reduit la degradation moyenne du bayesien
-d'environ 85 % et celle de la logistique d'environ 95 % par rapport a la version 0.2. Elle ne cree
-cependant aucun avantage: les deux intervalles couvrent zero et le gradient reste moins bon. Sur
-tout l'historique, le poids de production choisi vaut zero pour le bayesien et la logistique.
-La commande `ml-predict` renvoie donc `abstention`.
+La log-loss uniforme vaut `0,32954`. Le challenger temporel reduit d'environ 70 % la degradation du
+bayesien cumulatif, mais ne franchit pas zero. La logistique obtient davantage de hits Top-5 sans
+ameliorer significativement son score probabiliste. Le gradient boosting choisit une retraction
+totale et reproduit exactement le benchmark. Aucun modele ne se qualifie; `ml-predict` renvoie donc
+`abstention`.
 
 ## Participation et esperance monetaire
 

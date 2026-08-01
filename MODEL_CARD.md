@@ -8,6 +8,7 @@ prediction lorsque les preuves hors echantillon sont insuffisantes.
 ## Modeles
 
 - Posterior bayesien beta-binomial fortement ramene vers `5/49`.
+- Posterior bayesien temporel sur fenetre 10/50/200 avec lissage selectionne dans le passe.
 - Regression logistique L2 sur variables temporelles et effets par numero.
 - Histogram Gradient Boosting avec profondeur et regularisation limitees.
 - Regression Ridge et gradient boosting pour le volume de grilles.
@@ -20,6 +21,7 @@ dix classes supplementaire.
 ## Evaluation
 
 - Decoupage chronologique strict et groupement des tirages d'une meme date.
+- Entrainement et evaluation isoles par jeu cible.
 - Selection des hyperparametres dans le passe de chaque fold externe.
 - Score de Brier, log-loss, calibration et nombre de hits Top-5.
 - Intervalle bootstrap, permutation appariee et correction de Holm.
@@ -64,6 +66,6 @@ dix classes supplementaire.
 
 ## Resultat actuel
 
-Aucun des trois modeles de numeros ne se qualifie. La sortie de production est `abstention`. Le
+Aucun des quatre modeles de numeros ne se qualifie. La sortie de production est `abstention`. Le
 gradient boosting de participation se qualifie contre sa reference et sert uniquement au calcul
 de partage et de valeur. Le mode force ne doit pas etre presente comme une prediction gagnante.

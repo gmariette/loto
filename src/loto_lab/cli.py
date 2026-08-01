@@ -133,8 +133,10 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
         outer_folds=args.folds,
         simulations=args.simulations,
         seed=args.seed,
+        game=args.game,
     )
     payload = {
+        "game": args.game,
         "results": [result.to_dict() for result in results],
         "decision": (
             "model_available" if any(result.qualified for result in results) else "abstention"
@@ -154,6 +156,7 @@ def command_ml_predict(args: argparse.Namespace) -> None:
         outer_folds=args.folds,
         simulations=args.simulations,
         seed=args.seed,
+        game=args.game,
     )
     _print_json(
         predict_next_draw(
@@ -405,6 +408,9 @@ def build_parser() -> argparse.ArgumentParser:
     ml_backtest.add_argument("--folds", type=int, default=3)
     ml_backtest.add_argument("--simulations", type=int, default=2_000)
     ml_backtest.add_argument("--seed", type=int, default=0)
+    ml_backtest.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
     ml_backtest.add_argument("--output", type=Path)
     ml_backtest.set_defaults(handler=command_ml_backtest)
 

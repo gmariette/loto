@@ -128,8 +128,10 @@ variables sont construites avant que tous les tirages de cette date soient ajout
 - jour de semaine, annee et type Loto/Super Loto/Grand Loto ;
 - effet propre a chacun des 49 numeros.
 
-Trois familles sont comparees : posterior bayesien regularise, regression logistique penalisee et
-gradient boosting avec regularisation L2. La selection des hyperparametres et du poids de
+Quatre familles sont comparees : posterior bayesien cumulatif, posterior bayesien sur fenetre
+10/50/200, regression logistique penalisee et gradient boosting avec regularisation L2. Depuis la
+version 0.13.0, l'apprentissage est isole par jeu cible afin qu'un modele Loto ne melange pas les
+tirages Super Loto et Grand Loto. La selection des hyperparametres et du poids de
 retraction vers l'uniforme est effectuee dans une fenetre temporelle interne; seul le fold externe
 sert a annoncer la performance.
 
