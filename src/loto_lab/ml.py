@@ -15,6 +15,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .domain import DEFAULT_RULES, Draw, LotteryRules
+from .popularity import PopularityPredictor, optimize_value_aware_ticket
 
 FEATURE_NAMES = (
     "history_draws",
@@ -723,6 +724,8 @@ def predict_next_draw(
     game: str = "loto",
     force: bool = False,
     seed: int = 0,
+    popularity_predictor: PopularityPredictor | None = None,
+    max_expected_hit_loss: float = 0.005,
 ) -> dict[str, object]:
     selected_draws = [draw for draw in draws if draw.game == game]
     if not selected_draws:
@@ -765,8 +768,20 @@ def predict_next_draw(
         seed,
     )[0]
     rng = random.Random(seed)
-    if float(np.ptp(predicted)) < 1e-12:
+    value_selection = None
+    if popularity_predictor is not None:
+        chance = rng.randint(1, 10)
+        value_selection = optimize_value_aware_ticket(
+            predicted,
+            popularity_predictor,
+            max_expected_hit_loss=max_expected_hit_loss,
+            chance=chance,
+        )
+        top = value_selection.ticket.main
+        chance = value_selection.ticket.chance
+    elif float(np.ptp(predicted)) < 1e-12:
         top = tuple(sorted(rng.sample(range(1, 50), 5)))
+        chance = rng.randint(1, 10)
     else:
         ranking_rng = np.random.default_rng(seed)
         top = tuple(
@@ -780,6 +795,7 @@ def predict_next_draw(
                 )
             )
         )
+        chance = rng.randint(1, 10)
     return {
         "status": status,
         "game": game,
@@ -803,10 +819,19 @@ def predict_next_draw(
             "qualified": champion.qualified,
         },
         "numbers": top,
-        "chance": rng.randint(1, 10),
+        "chance": chance,
         "probability_spread": float(np.ptp(predicted)),
         "marginal_probabilities": {
             number: float(predicted[number - 1]) for number in sorted(top)
         },
         "warning": "Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.",
+        **(
+            {
+                "selection_objective": "value_aware_anti_crowd",
+                "value_aware_selection": value_selection.to_dict(),
+                "popularity_validation": popularity_predictor.validation.to_dict(),
+            }
+            if value_selection is not None
+            else {"selection_objective": "top5_hits"}
+        ),
     }

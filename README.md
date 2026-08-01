@@ -161,6 +161,36 @@ le budget `0,05 / (i * (i + 1))`; la somme de tous les essais presents et futurs
 Le test prospectif utilise la loi hypergeometrique exacte des hits Top-5. Une qualification
 historique seule ne suffit donc pas a revendiquer un avantage exploitable.
 
+### Popularite et partage
+
+Valider si la structure d'une combinaison explique le nombre de gagnants du jackpot, apres
+correction du volume de tickets estime par le rang 9 :
+
+```bash
+loto-lab popularity-backtest data/loto.sqlite \
+  --game loto --min-train 500 --folds 3 --simulations 2000 --block-size 12
+```
+
+Le modele de Poisson utilise le volume comme exposition et compare sa deviance a une popularite
+uniforme calibree dans chaque fold. Ses variables structurelles sont limitees aux effets dont le
+signe reste stable dans les validations temporelles : nombres au-dessus de 31, grille entierement
+dans 1-31, paires consecutives, 7/13, somme et distance a la somme centrale. L'intervalle et la
+p-value utilisent des blocs temporels pour conserver l'autocorrelation des habitudes de jeu.
+
+Une prediction experimentale peut ensuite chercher exhaustivement la combinaison la moins
+populaire parmi celles qui respectent un budget explicite de perte de hits attendus :
+
+```bash
+loto-lab ml-predict data/loto.sqlite --date 2026-08-03 --game loto \
+  --seed 20260803 --force --value-aware --max-expected-hit-loss 0.005
+```
+
+La sortie publie la grille Top-5 sans penalite, la grille retenue, les deux scores de hits attendus,
+la perte consentie, le multiplicateur de popularite predit et le backtest complet du modele de
+foule. Cette optimisation ne change pas la probabilite du tirage et ne rend pas l'esperance globale
+positive; elle vise uniquement a reduire un partage eventuel des gros rangs. La qualification est
+historique et doit encore etre confirmee sur des tirages futurs pre-enregistres.
+
 ### Esperance monetaire
 
 Valider l'estimation du nombre de grilles jouees :
