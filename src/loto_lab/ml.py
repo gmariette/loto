@@ -219,10 +219,19 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
         for prior_strength in (20.0, 100.0, 500.0)
     ),
     "logistic": ({"c": 0.01}, {"c": 0.1}, {"c": 1.0}),
+    "logistic_ranker": ({"c": 0.01}, {"c": 0.1}, {"c": 1.0}),
     "gradient_boosting": (
         {"learning_rate": 0.03, "max_leaf_nodes": 7, "l2": 1.0},
         {"learning_rate": 0.05, "max_leaf_nodes": 15, "l2": 5.0},
     ),
+}
+
+MODEL_SEED_OFFSETS = {
+    "bayesian": 0,
+    "rolling_bayesian": 10_000,
+    "logistic": 20_000,
+    "gradient_boosting": 30_000,
+    "logistic_ranker": 40_000,
 }
 
 UNIFORM_BLEND_WEIGHTS = (0.0, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
@@ -261,7 +270,7 @@ def _fit_predict(
         train_x = x_train.reshape(-1, x_train.shape[-1])
         train_y = y_train.reshape(-1)
         test_x = x_test.reshape(-1, x_test.shape[-1])
-        if model_name == "logistic":
+        if model_name in ("logistic", "logistic_ranker"):
             estimator: Any = make_pipeline(
                 StandardScaler(),
                 LogisticRegression(
@@ -354,7 +363,8 @@ def _select_parameters(
     split_date = validation_dates[0]
     inner_train = train_indices[dataset.dates[train_indices] < split_date]
     validation = train_indices[dataset.dates[train_indices] >= split_date]
-    best: tuple[float, dict[str, float | int]] | None = None
+    ranking_objective = model_name == "logistic_ranker"
+    best: tuple[tuple[float, float], dict[str, float | int]] | None = None
     for model_parameters in MODEL_PARAMETERS[model_name]:
         raw_predicted = _fit_predict(
             model_name,
@@ -364,12 +374,32 @@ def _select_parameters(
             dataset.x[validation],
             seed,
         )
-        for blend_weight in UNIFORM_BLEND_WEIGHTS:
+        blend_weights = (1.0,) if ranking_objective else UNIFORM_BLEND_WEIGHTS
+        for blend_weight in blend_weights:
             predicted = blend_with_uniform(raw_predicted, blend_weight)
-            score = float(_brier_by_draw(predicted, dataset.y[validation]).mean())
+            brier = float(_brier_by_draw(predicted, dataset.y[validation]).mean())
+            if ranking_objective:
+                ranking_rng = np.random.default_rng(seed)
+                mean_hits = float(
+                    np.mean(
+                        [
+                            len(
+                                set(_top5_indices(row, ranking_rng)).intersection(
+                                    np.flatnonzero(target)
+                                )
+                            )
+                            for row, target in zip(
+                                predicted, dataset.y[validation], strict=True
+                            )
+                        ]
+                    )
+                )
+                objective = (-mean_hits, brier)
+            else:
+                objective = (brier, 0.0)
             parameters = {**model_parameters, "uniform_blend": blend_weight}
-            if best is None or score < best[0]:
-                best = (score, parameters)
+            if best is None or objective < best[0]:
+                best = (objective, parameters)
     assert best is not None
     return dict(best[1])
 
@@ -575,6 +605,7 @@ def nested_ml_backtest(
         "rolling_bayesian",
         "logistic",
         "gradient_boosting",
+        "logistic_ranker",
     ),
 ) -> list[MLBacktestResult]:
     if outer_folds < 2 or simulations < 100:
@@ -588,9 +619,14 @@ def nested_ml_backtest(
     dataset = build_feature_dataset(selected_draws, min_history)
     results = [
         _backtest_one_model(
-            dataset, model, min_train, outer_folds, simulations, seed + index * 10_000
+            dataset,
+            model,
+            min_train,
+            outer_folds,
+            simulations,
+            seed + MODEL_SEED_OFFSETS[model],
         )
-        for index, model in enumerate(models)
+        for model in models
     ]
     return _holm_adjust(results)
 

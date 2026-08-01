@@ -132,6 +132,45 @@ class MLTests(unittest.TestCase):
         self.assertEqual(results[0].test_draws, 100)
         self.assertIn(results[0].final_parameters["window"], (10, 50, 200))
 
+    def test_logistic_ranker_is_tuned_for_non_uniform_ranking(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("logistic_ranker",),
+        )
+        self.assertEqual(results[0].model, "logistic_ranker")
+        self.assertEqual(results[0].final_parameters["uniform_blend"], 1.0)
+
+    def test_model_results_do_not_depend_on_requested_order(self) -> None:
+        draws = dated_random_draws(180)
+        common = {
+            "min_history": 20,
+            "min_train": 60,
+            "outer_folds": 2,
+            "simulations": 100,
+        }
+        forward = nested_ml_backtest(
+            draws, models=("bayesian", "rolling_bayesian"), **common
+        )
+        reverse = nested_ml_backtest(
+            draws, models=("rolling_bayesian", "bayesian"), **common
+        )
+        forward_by_model = {result.model: result for result in forward}
+        reverse_by_model = {result.model: result for result in reverse}
+        for model in forward_by_model:
+            self.assertEqual(
+                forward_by_model[model].mean_brier_delta,
+                reverse_by_model[model].mean_brier_delta,
+            )
+            self.assertEqual(
+                forward_by_model[model].top5_hit_uplift,
+                reverse_by_model[model].top5_hit_uplift,
+            )
+
     def test_backtest_can_isolate_the_target_game(self) -> None:
         draws = dated_random_draws(240)
         mixed = [
