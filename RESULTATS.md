@@ -149,6 +149,17 @@ les anciennes lignes en les laissant en hash v1; les preuves v1 et v2 restent ve
 prevision du 1er aout reste volontairement une preuve v0.7 et n'acquiert pas retroactivement une
 provenance qu'elle n'avait pas au moment de son ancrage.
 
+La version 0.10.0 ajoute a chaque nouvelle prevision `naive_ev`, calculee exactement comme la
+reference du backtest: petits rangs moyens plus valeur faciale du jackpot, sans codes, partage ni
+modele de participation. Apres tirage, le score chaine les erreurs absolues du modele et de cette
+reference ainsi que leur delta. Les cohortes sont separees par version et aucune qualification
+prospective n'est possible avant 100 observations comparables. Le verdict utilise uniquement les
+100 premieres, avec bootstrap et permutation par blocs de 12; les observations suivantes restent
+visibles en surveillance mais ne permettent pas de refaire le test jusqu'a obtenir un succes.
+
+Le registre contient actuellement zero score et zero observation avec benchmark. La preuve v0.7
+sera exclue de la comparaison au benchmark, car celui-ci n'avait pas ete publie avant son tirage.
+
 ## Regime historique : 6/49 + complementaire
 
 Echantillon separe : 2 707 tirages du 3 janvier 1996 au 4 octobre 2008, dont 2 664 Loto et

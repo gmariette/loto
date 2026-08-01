@@ -23,6 +23,7 @@ class ValueTests(unittest.TestCase):
             result.expected_return_rate, result.estimated_ev / result.ticket_price
         )
         self.assertAlmostEqual(result.estimated_roi, result.expected_return_rate - 1)
+        self.assertGreater(result.naive_ev, 0)
 
     def test_automatic_participation_models_sharing_and_codes(self) -> None:
         draws = [

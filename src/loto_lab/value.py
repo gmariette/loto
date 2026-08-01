@@ -41,6 +41,7 @@ class ValueReport:
     prediction_interval_target: float
     code_ev: float
     estimated_ev: float
+    naive_ev: float
     expected_return_rate: float
     estimated_roi: float
     ev_ci_low: float
@@ -212,6 +213,7 @@ def estimate_value(
         co_winner_source = "manual"
     jackpot_ev = probabilities[1] * jackpot * share_factor
     estimated_ev = lower_ev + code_ev + jackpot_ev
+    naive_ev = lower_ev + probabilities[1] * jackpot
     price = TICKET_PRICES[game]
     expected_return_rate = estimated_ev / price
 
@@ -322,6 +324,7 @@ def estimate_value(
         prediction_interval_target=0.95,
         code_ev=code_ev,
         estimated_ev=estimated_ev,
+        naive_ev=naive_ev,
         expected_return_rate=expected_return_rate,
         estimated_roi=expected_return_rate - 1,
         ev_ci_low=ci_low,

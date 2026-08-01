@@ -157,7 +157,9 @@ popularite relative d'une combinaison;
 jackpot d'equilibre central du jackpot ou la borne basse atteint le prix, recalcule la participation
 a chaque niveau et signale toute extrapolation au-dela des jackpots observes. Depuis la version
 0.8.0, `expected_return_rate` designe `EV / prix` et `estimated_roi` designe le rendement net
-`(EV - prix) / prix`; un taux de retour de 49 % correspond donc a un ROI net de -51 %.
+`(EV - prix) / prix`; un taux de retour de 49 % correspond donc a un ROI net de -51 %. Le champ
+`naive_ev` fige aussi la reference sans partage, codes ni modele de participation qui servira a
+l'evaluation prospective comparative.
 
 Backtester le moteur monetaire complet sur des folds futurs :
 
@@ -209,6 +211,11 @@ les previsions, les tirages, les scores et les deux chaines; `ledger-verify` rec
 metrique depuis le bareme sans acceder a SQLite. Un score est refuse avant 20 h 15, heure de Paris,
 le jour cible. La source du resultat doit etre une URL HTTPS du domaine FDJ et fait partie du hash
 du score. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
+
+`ledger-info` regroupe les scores comparables par `model_version`. Aucun verdict n'est produit avant
+100 scores pour une version. A ce seuil, bootstrap et permutation par blocs de 12 comparent les
+erreurs absolues au benchmark et controlent la couverture de 95 %. Le verdict est ensuite fige sur
+ces 100 observations; les resultats suivants alimentent uniquement les champs `monitoring_*`.
 
 Generer dix grilles distinctes :
 

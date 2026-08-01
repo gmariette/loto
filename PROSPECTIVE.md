@@ -29,3 +29,8 @@ etre controle sans la base locale avec `loto-lab ledger-verify evidence/prospect
 La version 0.9 ajoute aux nouvelles previsions les hashes des fichiers et du contenu logique charge,
 puis lie la source HTTPS FDJ a chaque score. Ces informations ne sont pas ajoutees a cette prevision
 v0.7 apres coup: son payload original et son hash public restent la seule preuve recevable.
+
+De meme, la reference `naive_ev` introduite en version 0.10 n'est pas reconstruite apres coup pour
+cette prevision. Son futur score contribuera au biais, a la MAE et a la couverture, mais pas au delta
+comparatif modele-reference. Seules les previsions qui ont publie les deux EV avant tirage sont
+eligibles au protocole de qualification sur 100 observations.

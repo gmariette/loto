@@ -4,25 +4,32 @@ import hashlib
 import json
 import math
 import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from statistics import fmean
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+import numpy as np
+
 from . import __version__
 from .domain import Draw, PrizeResult
 from .probability import rank_probabilities, total_outcomes
 from .value import ValueReport, _lower_rank_ev, _poisson_share_factor
-from .value_backtest import _draw_jackpot, _draw_ticket_count
+from .value_backtest import _draw_jackpot, _draw_ticket_count, _moving_block_means
 
 GENESIS_HASH = "0" * 64
 PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
 LOTO_RECORDING_CUTOFF = time(20, 15)
 EVIDENCE_FORMAT = "loto-lab.prospective-ledger"
-EVIDENCE_SCHEMA_VERSION = 2
-SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2)
-CURRENT_LEDGER_SCHEMA_VERSION = 2
+EVIDENCE_SCHEMA_VERSION = 3
+SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2, 3)
+CURRENT_LEDGER_SCHEMA_VERSION = 3
+PROSPECTIVE_QUALIFICATION_SCORES = 100
+PROSPECTIVE_BLOCK_SIZE = 12
+PROSPECTIVE_INFERENCE_SIMULATIONS = 2_000
+PROSPECTIVE_INFERENCE_SEED = 20_260_801
 
 LEDGER_SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -64,6 +71,11 @@ CREATE TABLE IF NOT EXISTS value_scores (
     false_positive INTEGER NOT NULL CHECK (false_positive IN (0, 1)),
     false_negative INTEGER NOT NULL CHECK (false_negative IN (0, 1)),
     draw_json TEXT NOT NULL,
+    naive_ev REAL,
+    naive_error REAL,
+    naive_absolute_error REAL,
+    absolute_error_delta REAL,
+    metrics_version INTEGER NOT NULL DEFAULT 1 CHECK (metrics_version IN (1, 2)),
     score_provenance_json TEXT NOT NULL DEFAULT '{}',
     hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2)),
     previous_hash TEXT NOT NULL,
@@ -127,6 +139,19 @@ def _connect(path: str | Path) -> sqlite3.Connection:
         connection.execute(
             "ALTER TABLE value_scores ADD COLUMN "
             "hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2))"
+        )
+    if "naive_ev" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_ev REAL")
+    if "naive_error" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_error REAL")
+    if "naive_absolute_error" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN naive_absolute_error REAL")
+    if "absolute_error_delta" not in score_columns:
+        connection.execute("ALTER TABLE value_scores ADD COLUMN absolute_error_delta REAL")
+    if "metrics_version" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "metrics_version INTEGER NOT NULL DEFAULT 1 CHECK (metrics_version IN (1, 2))"
         )
     connection.execute(
         """
@@ -289,6 +314,7 @@ def record_value_forecast(
             "model_version": model_version,
             "decision": report.decision,
             "estimated_ev": report.estimated_ev,
+            "naive_ev": report.naive_ev,
             "ev_ci_low": report.ev_ci_low,
             "ev_ci_high": report.ev_ci_high,
             "previous_hash": previous_hash,
@@ -391,12 +417,18 @@ def _validate_data_provenance(value: object) -> dict[str, object]:
     return value
 
 
-def _uses_hashed_provenance(model_version: object) -> bool:
+def _model_version_at_least(
+    model_version: object, minimum: tuple[int, int]
+) -> bool:
     try:
         parts = tuple(int(part) for part in str(model_version).split(".")[:2])
     except ValueError:
         return False
-    return parts >= (0, 9)
+    return parts >= minimum
+
+
+def _uses_hashed_provenance(model_version: object) -> bool:
+    return _model_version_at_least(model_version, (0, 9))
 
 
 def _observed_schedule_ev(draw: Draw) -> float | None:
@@ -417,6 +449,30 @@ def _observed_schedule_ev(draw: Draw) -> float | None:
         * jackpot
         * _poisson_share_factor(actual_tickets / total_outcomes())
     )
+
+
+def _stored_score_metrics(row: sqlite3.Row) -> dict[str, float | int]:
+    metrics: dict[str, float | int] = {
+        "observed_schedule_ev": float(row["observed_schedule_ev"]),
+        "error": float(row["error"]),
+        "absolute_error": float(row["absolute_error"]),
+        "covered": int(row["covered"]),
+        "observed_positive": int(row["observed_positive"]),
+        "false_positive": int(row["false_positive"]),
+        "false_negative": int(row["false_negative"]),
+    }
+    metrics_version = int(row["metrics_version"])
+    if metrics_version == 2:
+        metrics.update(
+            {
+                "metrics_version": metrics_version,
+                "naive_ev": float(row["naive_ev"]),
+                "naive_error": float(row["naive_error"]),
+                "naive_absolute_error": float(row["naive_absolute_error"]),
+                "absolute_error_delta": float(row["absolute_error_delta"]),
+            }
+        )
+    return metrics
 
 
 def score_pending_forecasts(
@@ -489,6 +545,28 @@ def score_pending_forecasts(
                 "false_positive": int(eligible and not observed_positive),
                 "false_negative": int(not eligible and observed_positive),
             }
+            forecast_payload = json.loads(str(forecast["report_json"]))
+            report_payload = forecast_payload.get("report", {})
+            naive_value = (
+                report_payload.get("naive_ev")
+                if isinstance(report_payload, dict)
+                else None
+            )
+            metrics_version = 1
+            if naive_value is not None:
+                metrics_version = 2
+                naive_ev = float(naive_value)
+                naive_error = naive_ev - observed_ev
+                metrics.update(
+                    {
+                        "metrics_version": metrics_version,
+                        "naive_ev": naive_ev,
+                        "naive_error": naive_error,
+                        "naive_absolute_error": abs(naive_error),
+                        "absolute_error_delta": metrics["absolute_error"]
+                        - abs(naive_error),
+                    }
+                )
             draw_json = _canonical_json(_draw_payload(draw))
             record_hash = _score_hash(
                 scored_at,
@@ -504,8 +582,10 @@ def score_pending_forecasts(
                 INSERT INTO value_scores(
                     forecast_id, scored_at, observed_schedule_ev, error, absolute_error,
                     covered, observed_positive, false_positive, false_negative, draw_json,
+                    naive_ev, naive_error, naive_absolute_error, absolute_error_delta,
+                    metrics_version,
                     score_provenance_json, hash_version, previous_hash, record_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(forecast["id"]),
@@ -518,6 +598,11 @@ def score_pending_forecasts(
                     metrics["false_positive"],
                     metrics["false_negative"],
                     draw_json,
+                    metrics.get("naive_ev"),
+                    metrics.get("naive_error"),
+                    metrics.get("naive_absolute_error"),
+                    metrics.get("absolute_error_delta"),
+                    metrics_version,
                     score_provenance_json,
                     hash_version,
                     previous_hash,
@@ -529,6 +614,7 @@ def score_pending_forecasts(
                     "score_id": int(cursor.lastrowid),
                     "forecast_id": int(forecast["id"]),
                     **metrics,
+                    "metrics_version": metrics_version,
                     "provenance": provenance,
                     "hash_version": hash_version,
                     "record_hash": record_hash,
@@ -578,15 +664,7 @@ def verify_ledger(ledger: str | Path) -> dict[str, object]:
         previous_hash = GENESIS_HASH
         scores = connection.execute("SELECT * FROM value_scores ORDER BY id").fetchall()
         for row in scores:
-            metrics: dict[str, float | int] = {
-                "observed_schedule_ev": float(row["observed_schedule_ev"]),
-                "error": float(row["error"]),
-                "absolute_error": float(row["absolute_error"]),
-                "covered": int(row["covered"]),
-                "observed_positive": int(row["observed_positive"]),
-                "false_positive": int(row["false_positive"]),
-                "false_negative": int(row["false_negative"]),
-            }
+            metrics = _stored_score_metrics(row)
             expected = _score_hash(
                 str(row["scored_at"]),
                 forecast_hashes.get(int(row["forecast_id"]), "missing"),
@@ -611,6 +689,109 @@ def verify_ledger(ledger: str | Path) -> dict[str, object]:
         connection.close()
 
 
+def _benchmark_cohort_summary(
+    model_version: str, rows: list[Mapping[str, object]]
+) -> dict[str, object]:
+    model_mae = fmean(float(row["absolute_error"]) for row in rows)
+    naive_mae = fmean(float(row["naive_absolute_error"]) for row in rows)
+    mean_delta = fmean(float(row["absolute_error_delta"]) for row in rows)
+    summary: dict[str, object] = {
+        "model_version": model_version,
+        "observations": len(rows),
+        "qualification_observations": PROSPECTIVE_QUALIFICATION_SCORES,
+        "remaining_before_qualification": max(
+            0, PROSPECTIVE_QUALIFICATION_SCORES - len(rows)
+        ),
+        "monitoring_model_mae": model_mae,
+        "monitoring_naive_mae": naive_mae,
+        "monitoring_mae_delta": mean_delta,
+        "monitoring_relative_mae_improvement": (
+            1 - model_mae / naive_mae if naive_mae else None
+        ),
+        "monitoring_coverage": fmean(int(row["covered"]) for row in rows),
+        "evaluation_model_mae": None,
+        "evaluation_naive_mae": None,
+        "evaluation_mae_delta": None,
+        "evaluation_relative_mae_improvement": None,
+        "mae_delta_ci_low": None,
+        "mae_delta_ci_high": None,
+        "permutation_p_value": None,
+        "evaluation_coverage": None,
+        "coverage_ci_low": None,
+        "coverage_ci_high": None,
+        "qualified_against_naive": False,
+        "coverage_compatible_with_target": False,
+        "value_model_qualified": False,
+        "qualification_status": "insufficient_data",
+    }
+    if len(rows) < PROSPECTIVE_QUALIFICATION_SCORES:
+        return summary
+
+    evaluation = rows[:PROSPECTIVE_QUALIFICATION_SCORES]
+    deltas = np.asarray(
+        [float(row["absolute_error_delta"]) for row in evaluation], dtype=float
+    )
+    coverage_values = np.asarray(
+        [int(row["covered"]) for row in evaluation], dtype=float
+    )
+    block_size = min(PROSPECTIVE_BLOCK_SIZE, len(evaluation))
+    rng = np.random.default_rng(PROSPECTIVE_INFERENCE_SEED)
+    bootstrap = _moving_block_means(
+        deltas, PROSPECTIVE_INFERENCE_SIMULATIONS, rng, block_size
+    )
+    observed_delta = float(deltas.mean())
+    extreme = 0
+    blocks_needed = math.ceil(len(deltas) / block_size)
+    for _ in range(PROSPECTIVE_INFERENCE_SIMULATIONS):
+        signs = np.repeat(rng.choice((-1.0, 1.0), size=blocks_needed), block_size)[
+            : len(deltas)
+        ]
+        if float((deltas * signs).mean()) <= observed_delta:
+            extreme += 1
+    delta_low = float(np.quantile(bootstrap, 0.025))
+    delta_high = float(np.quantile(bootstrap, 0.975))
+    p_value = (extreme + 1) / (PROSPECTIVE_INFERENCE_SIMULATIONS + 1)
+    coverage_rate = float(coverage_values.mean())
+    coverage_bootstrap = _moving_block_means(
+        coverage_values, PROSPECTIVE_INFERENCE_SIMULATIONS, rng, block_size
+    )
+    coverage_low = min(coverage_rate, float(np.quantile(coverage_bootstrap, 0.025)))
+    coverage_high = max(coverage_rate, float(np.quantile(coverage_bootstrap, 0.975)))
+    qualified_against_naive = delta_high < 0 and p_value < 0.05
+    coverage_compatible = coverage_low <= 0.95 <= coverage_high
+    qualified = qualified_against_naive and coverage_compatible
+    evaluation_model_mae = fmean(
+        float(row["absolute_error"]) for row in evaluation
+    )
+    evaluation_naive_mae = fmean(
+        float(row["naive_absolute_error"]) for row in evaluation
+    )
+    summary.update(
+        {
+            "evaluation_observations": len(evaluation),
+            "evaluation_model_mae": evaluation_model_mae,
+            "evaluation_naive_mae": evaluation_naive_mae,
+            "evaluation_mae_delta": observed_delta,
+            "evaluation_relative_mae_improvement": (
+                1 - evaluation_model_mae / evaluation_naive_mae
+                if evaluation_naive_mae
+                else None
+            ),
+            "mae_delta_ci_low": delta_low,
+            "mae_delta_ci_high": delta_high,
+            "permutation_p_value": p_value,
+            "evaluation_coverage": coverage_rate,
+            "coverage_ci_low": coverage_low,
+            "coverage_ci_high": coverage_high,
+            "qualified_against_naive": qualified_against_naive,
+            "coverage_compatible_with_target": coverage_compatible,
+            "value_model_qualified": qualified,
+            "qualification_status": "qualified" if qualified else "not_qualified",
+        }
+    )
+    return summary
+
+
 def ledger_info(ledger: str | Path) -> dict[str, object]:
     connection = _connect(ledger)
     try:
@@ -619,10 +800,22 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
         ).fetchall()
         scores = connection.execute(
             """
-            SELECT error, absolute_error, covered, false_positive, false_negative
-            FROM value_scores ORDER BY id
+            SELECT s.error, s.absolute_error, s.covered, s.false_positive,
+                   s.false_negative, s.naive_absolute_error, s.absolute_error_delta,
+                   s.metrics_version, f.model_version
+            FROM value_scores s
+            JOIN value_forecasts f ON f.id = s.forecast_id
+            ORDER BY s.id
             """
         ).fetchall()
+        benchmark_rows = [row for row in scores if int(row["metrics_version"]) == 2]
+        cohorts: dict[str, list[sqlite3.Row]] = {}
+        for row in benchmark_rows:
+            cohorts.setdefault(str(row["model_version"]), []).append(row)
+        cohort_summaries = [
+            _benchmark_cohort_summary(model_version, rows)
+            for model_version, rows in cohorts.items()
+        ]
         verification = verify_ledger(ledger)
         return {
             **verification,
@@ -640,6 +833,27 @@ def ledger_info(ledger: str | Path) -> dict[str, object]:
             ),
             "false_positives": sum(int(row["false_positive"]) for row in scores),
             "false_negatives": sum(int(row["false_negative"]) for row in scores),
+            "benchmark_observations": len(benchmark_rows),
+            "benchmark_model_mae": (
+                fmean(float(row["absolute_error"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "naive_mae": (
+                fmean(float(row["naive_absolute_error"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "mae_delta": (
+                fmean(float(row["absolute_error_delta"]) for row in benchmark_rows)
+                if benchmark_rows
+                else None
+            ),
+            "qualification_protocol": (
+                "Verdict fige sur les 100 premiers scores comparables de chaque version, "
+                "avec bootstrap et permutation par blocs de 12."
+            ),
+            "qualification_cohorts": cohort_summaries,
             "interpretation": (
                 "Publier forecast_head_hash avant le tirage, puis score_head_hash apres scoring."
             ),
@@ -682,13 +896,8 @@ def export_ledger_evidence(ledger: str | Path) -> dict[str, object]:
                     "id": int(row["id"]),
                     "forecast_id": int(row["forecast_id"]),
                     "scored_at": str(row["scored_at"]),
-                    "observed_schedule_ev": float(row["observed_schedule_ev"]),
-                    "error": float(row["error"]),
-                    "absolute_error": float(row["absolute_error"]),
-                    "covered": int(row["covered"]),
-                    "observed_positive": int(row["observed_positive"]),
-                    "false_positive": int(row["false_positive"]),
-                    "false_negative": int(row["false_negative"]),
+                    **_stored_score_metrics(row),
+                    "metrics_version": int(row["metrics_version"]),
                     "draw": json.loads(str(row["draw_json"])),
                     "provenance": json.loads(str(row["score_provenance_json"])),
                     "hash_version": int(row["hash_version"]),
@@ -830,6 +1039,15 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                         _validate_data_provenance(provenance.get("data"))
                     except ValueError:
                         errors.append(f"{label}:data_provenance")
+            if _model_version_at_least(item["model_version"], (0, 10)):
+                if not isinstance(report, dict) or report.get("naive_ev") is None:
+                    errors.append(f"{label}:naive_ev")
+                else:
+                    expected_naive = float(report["lower_rank_ev"]) + (
+                        rank_probabilities()[0].probability * float(report["jackpot"])
+                    )
+                    if not _same_number(float(report["naive_ev"]), expected_naive):
+                        errors.append(f"{label}:naive_ev")
             forecast_hashes[forecast_id] = record_hash
             forecast_records[forecast_id] = item
             targets.add(target)
@@ -859,6 +1077,19 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                 "false_positive": int(item["false_positive"]),
                 "false_negative": int(item["false_negative"]),
             }
+            metrics_version = int(item.get("metrics_version", 1))
+            if metrics_version == 2:
+                metrics.update(
+                    {
+                        "metrics_version": metrics_version,
+                        "naive_ev": float(item["naive_ev"]),
+                        "naive_error": float(item["naive_error"]),
+                        "naive_absolute_error": float(item["naive_absolute_error"]),
+                        "absolute_error_delta": float(item["absolute_error_delta"]),
+                    }
+                )
+            elif metrics_version != 1:
+                errors.append(f"{label}:metrics_version")
             draw_payload = item["draw"]
             if not isinstance(draw_payload, dict):
                 raise TypeError
@@ -920,6 +1151,33 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                     "false_positive": int(eligible and not observed_positive),
                     "false_negative": int(not eligible and observed_positive),
                 }
+                if metrics_version == 2:
+                    forecast_payload = forecast.get("payload")
+                    report_payload = (
+                        forecast_payload.get("report")
+                        if isinstance(forecast_payload, dict)
+                        else None
+                    )
+                    naive_value = (
+                        report_payload.get("naive_ev")
+                        if isinstance(report_payload, dict)
+                        else None
+                    )
+                    if naive_value is None:
+                        errors.append(f"{label}:missing_naive_forecast")
+                    else:
+                        naive_ev = float(naive_value)
+                        naive_error = naive_ev - observed_ev
+                        expected_metrics.update(
+                            {
+                                "metrics_version": metrics_version,
+                                "naive_ev": naive_ev,
+                                "naive_error": naive_error,
+                                "naive_absolute_error": abs(naive_error),
+                                "absolute_error_delta": expected_metrics["absolute_error"]
+                                - abs(naive_error),
+                            }
+                        )
                 for key, expected_value in expected_metrics.items():
                     actual = metrics[key]
                     matches = (

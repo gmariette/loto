@@ -12,6 +12,7 @@ from test_participation import participation_draws
 from loto_lab.domain import Draw
 from loto_lab.prospective import (
     PARIS_TIMEZONE,
+    _benchmark_cohort_summary,
     _canonical_json,
     _recording_is_open,
     _score_hash,
@@ -113,6 +114,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(info["scores"], 1)
         self.assertEqual(info["pending"], 0)
         self.assertIsNotNone(info["mae"])
+        self.assertEqual(info["benchmark_observations"], 1)
+        self.assertEqual(
+            info["qualification_cohorts"][0]["qualification_status"],
+            "insufficient_data",
+        )
 
         evidence = export_ledger_evidence(self.ledger)
         self.assertTrue(verify_evidence(evidence)["valid"])
@@ -122,6 +128,14 @@ class ProspectiveLedgerTests(unittest.TestCase):
         legacy_score = legacy_evidence["scores"][0]
         legacy_score.pop("provenance")
         legacy_score.pop("hash_version")
+        legacy_score.pop("metrics_version")
+        for key in (
+            "naive_ev",
+            "naive_error",
+            "naive_absolute_error",
+            "absolute_error_delta",
+        ):
+            legacy_score.pop(key)
         legacy_metrics = {
             key: legacy_score[key]
             for key in (
@@ -161,6 +175,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 "observed_positive",
                 "false_positive",
                 "false_negative",
+                "metrics_version",
+                "naive_ev",
+                "naive_error",
+                "naive_absolute_error",
+                "absolute_error_delta",
             )
         }
         score["record_hash"] = _score_hash(
@@ -212,6 +231,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
         try:
             connection.execute("ALTER TABLE value_scores DROP COLUMN score_provenance_json")
             connection.execute("ALTER TABLE value_scores DROP COLUMN hash_version")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN metrics_version")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN absolute_error_delta")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_absolute_error")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_error")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_ev")
             connection.execute(
                 "UPDATE ledger_metadata SET value = '1' WHERE key = 'schema_version'"
             )
@@ -232,8 +256,90 @@ class ProspectiveLedgerTests(unittest.TestCase):
             connection.close()
         self.assertIn("score_provenance_json", columns)
         self.assertIn("hash_version", columns)
-        self.assertEqual(schema_version, "2")
+        self.assertIn("metrics_version", columns)
+        self.assertIn("absolute_error_delta", columns)
+        self.assertEqual(schema_version, "3")
         self.assertEqual(verify_ledger(self.ledger)["forecast_head_hash"], record["record_hash"])
+
+    def test_v2_score_hash_survives_v3_migration(self) -> None:
+        forecast = record_value_forecast(
+            self.ledger, self.report, provenance=self.forecast_provenance
+        )
+        source_draw = self.draws[-1]
+        target = Draw(
+            source_draw.main,
+            source_draw.chance,
+            self.target_date,
+            source_draw.game,
+            source_draw.prizes,
+            10,
+            20_000,
+        )
+        scoring_time = datetime(
+            self.target_date.year,
+            self.target_date.month,
+            self.target_date.day,
+            21,
+            tzinfo=PARIS_TIMEZONE,
+        )
+        score_pending_forecasts(
+            self.ledger,
+            [target],
+            provenance=self.score_provenance,
+            current_time=scoring_time,
+        )
+
+        connection = sqlite3.connect(self.ledger)
+        connection.row_factory = sqlite3.Row
+        try:
+            row = connection.execute("SELECT * FROM value_scores WHERE id = 1").fetchone()
+            legacy_metrics = {
+                key: row[key]
+                for key in (
+                    "observed_schedule_ev",
+                    "error",
+                    "absolute_error",
+                    "covered",
+                    "observed_positive",
+                    "false_positive",
+                    "false_negative",
+                )
+            }
+            legacy_hash = _score_hash(
+                row["scored_at"],
+                forecast["record_hash"],
+                row["previous_hash"],
+                row["draw_json"],
+                legacy_metrics,
+                provenance_json=row["score_provenance_json"],
+                hash_version=2,
+            )
+            connection.execute("DROP TRIGGER value_scores_no_update")
+            connection.execute(
+                """
+                UPDATE value_scores
+                SET naive_ev = NULL, naive_error = NULL, naive_absolute_error = NULL,
+                    absolute_error_delta = NULL, metrics_version = 1, record_hash = ?
+                WHERE id = 1
+                """,
+                (legacy_hash,),
+            )
+            connection.execute("ALTER TABLE value_scores DROP COLUMN metrics_version")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN absolute_error_delta")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_absolute_error")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_error")
+            connection.execute("ALTER TABLE value_scores DROP COLUMN naive_ev")
+            connection.execute(
+                "UPDATE ledger_metadata SET value = '2' WHERE key = 'schema_version'"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        info = ledger_info(self.ledger)
+        self.assertTrue(info["valid"])
+        self.assertEqual(info["score_head_hash"], legacy_hash)
+        self.assertEqual(info["benchmark_observations"], 0)
 
     def test_score_requires_an_official_fdj_source(self) -> None:
         with self.assertRaisesRegex(ValueError, "officielle FDJ"):
@@ -242,6 +348,36 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 self.draws,
                 provenance={"result_source": "https://example.com/resultat"},
             )
+
+    def test_prospective_qualification_is_frozen_on_first_100_scores(self) -> None:
+        first_cohort = [
+            {
+                "absolute_error": 0.1,
+                "naive_absolute_error": 0.2,
+                "absolute_error_delta": -0.1,
+                "covered": int(index < 95),
+            }
+            for index in range(100)
+        ]
+        insufficient = _benchmark_cohort_summary("0.10.0", first_cohort[:99])
+        self.assertEqual(insufficient["qualification_status"], "insufficient_data")
+
+        qualified = _benchmark_cohort_summary("0.10.0", first_cohort)
+        self.assertEqual(qualified["qualification_status"], "qualified")
+        later_scores = [
+            {
+                "absolute_error": 1.0,
+                "naive_absolute_error": 0.1,
+                "absolute_error_delta": 0.9,
+                "covered": 0,
+            }
+            for _ in range(20)
+        ]
+        frozen = _benchmark_cohort_summary("0.10.0", [*first_cohort, *later_scores])
+        self.assertEqual(frozen["qualification_status"], "qualified")
+        self.assertEqual(frozen["evaluation_observations"], 100)
+        self.assertLess(frozen["evaluation_mae_delta"], 0)
+        self.assertGreater(frozen["monitoring_mae_delta"], 0)
 
     def test_retroactive_forecast_is_rejected(self) -> None:
         retroactive = replace(self.report, target_date=date.today() - timedelta(days=1))

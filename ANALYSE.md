@@ -208,3 +208,17 @@ Les scores v2 incluent ces empreintes et l'URL HTTPS FDJ du resultat dans leur h
 ajoute les colonnes de provenance sans recalculer les anciens hashes; un verificateur choisit
 l'algorithme v1 ou v2 ligne par ligne. Cette compatibilite est necessaire: reecrire une ancienne
 preuve au nom d'une meilleure provenance detruirait precisement sa valeur chronologique.
+
+## 13. Comparaison prospective au benchmark
+
+Une MAE prospective isolee ne dit pas si le moteur apporte quelque chose: une moyenne historique
+plus simple peut avoir la meme erreur ou faire mieux. La version 0.10.0 fige donc `naive_ev` dans le
+rapport pre-tirage. Au scoring, elle calcule l'erreur absolue de chaque methode et le delta
+`|erreur modele| - |erreur naive|`; un delta negatif favorise le modele complet.
+
+Les scores sont regroupes par version pour ne pas melanger des algorithmes differents. La
+qualification attend exactement 100 scores comparables, puis utilise un bootstrap en blocs et une
+permutation de signes par blocs de 12. Elle exige un intervalle du delta entierement negatif, une
+p-value inferieure a 5 % et une couverture compatible avec 95 %. Cette evaluation est figee sur les
+100 premiers scores. Les suivants mettent a jour la surveillance mais pas le verdict, ce qui evite
+un test sequentiel repete jusqu'a un resultat favorable.
