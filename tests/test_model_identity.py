@@ -62,10 +62,21 @@ class ModelIdentityTests(unittest.TestCase):
             seed=42,
             models=("bayesian", "logistic", "logistic_ranker"),
         )
+        value_aware = build_number_model_specification(
+            game="loto",
+            min_history=50,
+            min_train=500,
+            outer_folds=3,
+            simulations=2_000,
+            seed=42,
+            models=("bayesian", "logistic"),
+            value_aware=True,
+        )
         self.assertEqual(
             validate_number_model_specification(baseline), baseline["sha256"]
         )
         self.assertNotEqual(baseline["sha256"], changed["sha256"])
+        self.assertNotEqual(baseline["sha256"], value_aware["sha256"])
 
 
 if __name__ == "__main__":

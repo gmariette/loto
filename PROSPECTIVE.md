@@ -108,3 +108,22 @@ La grille sans mise figee pour le 3 aout est `11 20 40 42 44`, Chance `3`, entra
 alpha de `0,0041667`. Tete append-only :
 `a2cffc620df43c27749441618ce58207b315f37f6e15ceebbe3456de4fd67c5e`. Empreinte du bundle :
 `563e341f2653094d4387797ec2e6e3122ec2899a210d86bbb39d36373825aa59`.
+
+La version 0.19 change l'objectif secondaire plutot que de revendiquer un nouveau signal sur les
+boules. Les classements directs, ensembles, walk-forward, multi-origines, interactions par jour et
+pooling Loto/Super/Grand Loto ont tous ete rejetes hors echantillon. Le nouveau modele de popularite
+utilise en revanche les 1 472 tirages disposant du rang 9 comme exposition et le nombre de gagnants
+du rang 1 comme cible de Poisson. Sur 972 observations externes, sa deviance vaut `0,74975` contre
+`0,79391` pour la popularite uniforme, delta `-0,04415`, IC temporel par blocs
+`[-0,09839 ; -0,00346]`, p-value `0,03898`. Cette qualification reste historique.
+
+L'optimiseur exhaustif a compare les 1 906 884 combinaisons et 5 377 respectaient la perte maximale
+de `0,005` hit attendu. La grille sans mise figee pour le 3 aout est `5 6 42 43 44`, Chance `3`.
+Son score marginal attendu vaut `0,52073`, contre `0,52542` pour la grille Top-5 pure
+`11 20 40 42 44`; la perte est `0,00469`. Son multiplicateur de popularite predit vaut `0,44992`,
+contre `1,03512` en moyenne. Cela vise seulement un partage potentiellement moindre en cas de gros
+gain et n'augmente pas la probabilite de tirage. La cohorte 4,
+`eadab0c5f709aaa8d280cd82d74ae9f628015e2974d6c8ec75f3527cc2033a57`, dispose d'un budget
+alpha de `0,0025`. Tete append-only :
+`f440b7e043fadcf0e1379299bcd424d93a0617098c5b1d9cf1ae9578e5ee3200`. Empreinte du bundle :
+`feb976688a8c238b4f3546ab2b7ad51d98bba1ca608b71e0c6dd6eb813bf0659`.

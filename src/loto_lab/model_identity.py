@@ -16,7 +16,13 @@ MODEL_SOURCE_FILES = (
     "probability.py",
     "value.py",
 )
-NUMBER_MODEL_SOURCE_FILES = ("domain.py", "ml.py", "number_prospective.py")
+NUMBER_MODEL_SOURCE_FILES = (
+    "domain.py",
+    "ml.py",
+    "number_prospective.py",
+    "popularity.py",
+    "probability.py",
+)
 
 
 def _canonical_json(value: object) -> str:
@@ -82,6 +88,9 @@ def build_number_model_specification(
     simulations: int,
     seed: int,
     models: tuple[str, ...],
+    value_aware: bool = False,
+    max_expected_hit_loss: float = 0.005,
+    popularity_block_size: int = 12,
 ) -> dict[str, object]:
     specification: dict[str, object] = {
         "format": NUMBER_MODEL_SPECIFICATION_FORMAT,
@@ -100,6 +109,9 @@ def build_number_model_specification(
             "simulations": simulations,
             "seed": seed,
             "models": list(models),
+            "value_aware": value_aware,
+            "max_expected_hit_loss": max_expected_hit_loss,
+            "popularity_block_size": popularity_block_size,
         },
     }
     return {**specification, "sha256": _digest(specification)}

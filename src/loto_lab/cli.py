@@ -15,7 +15,7 @@ from .data import (
     load_legacy_draws_many,
 )
 from .database import build_database, database_info
-from .domain import DEFAULT_RULES, LotteryRules
+from .domain import DEFAULT_RULES, Draw, LotteryRules
 from .ml import DEFAULT_MODELS, nested_ml_backtest, predict_next_draw
 from .model_identity import build_model_specification, build_number_model_specification
 from .models import SmoothedFrequencyPredictor, standard_backtests
@@ -27,6 +27,11 @@ from .number_prospective import (
     verify_number_ledger,
 )
 from .participation import participation_backtest
+from .popularity import (
+    PopularityPredictor,
+    fit_popularity_predictor,
+    popularity_backtest,
+)
 from .probability import (
     expected_budget,
     probability_of_any_prize,
@@ -156,8 +161,44 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
     _print_json(payload)
 
 
+def command_popularity_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    result = popularity_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
+    )
+    _print_json(result.to_dict())
+
+
+def _value_aware_predictor(
+    args: argparse.Namespace, draws: list[Draw]
+) -> PopularityPredictor | None:
+    if not args.value_aware:
+        return None
+    result = popularity_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.popularity_block_size,
+        seed=args.seed,
+    )
+    if not result.qualified:
+        raise SystemExit(
+            "Le modele de popularite ne bat pas la reference uniforme: optimisation refusee"
+        )
+    return fit_popularity_predictor(draws, result)
+
+
 def command_ml_predict(args: argparse.Namespace) -> None:
     draws = load_draws_many(args.data)
+    popularity_predictor = _value_aware_predictor(args, draws)
     results = nested_ml_backtest(
         draws,
         min_history=args.min_history,
@@ -175,6 +216,8 @@ def command_ml_predict(args: argparse.Namespace) -> None:
             game=args.game,
             force=args.force,
             seed=args.seed,
+            popularity_predictor=popularity_predictor,
+            max_expected_hit_loss=args.max_expected_hit_loss,
         )
     )
 
@@ -184,6 +227,7 @@ def command_ml_record(args: argparse.Namespace) -> None:
     target_date = date.fromisoformat(args.date)
     if any(draw.game == args.game and draw.draw_date == target_date for draw in draws):
         raise SystemExit("Le tirage cible est deja present: enregistrement retrospectif refuse")
+    popularity_predictor = _value_aware_predictor(args, draws)
     results = nested_ml_backtest(
         draws,
         min_history=args.min_history,
@@ -200,6 +244,8 @@ def command_ml_record(args: argparse.Namespace) -> None:
         game=args.game,
         force=args.force,
         seed=args.seed,
+        popularity_predictor=popularity_predictor,
+        max_expected_hit_loss=args.max_expected_hit_loss,
     )
     specification = build_number_model_specification(
         game=args.game,
@@ -209,6 +255,9 @@ def command_ml_record(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         seed=args.seed,
         models=DEFAULT_MODELS,
+        value_aware=args.value_aware,
+        max_expected_hit_loss=args.max_expected_hit_loss,
+        popularity_block_size=args.popularity_block_size,
     )
     record = record_number_forecast(
         args.ledger,
@@ -506,6 +555,21 @@ def build_parser() -> argparse.ArgumentParser:
     ml_backtest.add_argument("--output", type=Path)
     ml_backtest.set_defaults(handler=command_ml_backtest)
 
+    popularity = subparsers.add_parser(
+        "popularity-backtest",
+        help="Valider la popularite des combinaisons par les co-gagnants",
+    )
+    popularity.add_argument("data", type=Path, nargs="+")
+    popularity.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    popularity.add_argument("--min-train", type=int, default=500)
+    popularity.add_argument("--folds", type=int, default=3)
+    popularity.add_argument("--simulations", type=int, default=2_000)
+    popularity.add_argument("--block-size", type=int, default=12)
+    popularity.add_argument("--seed", type=int, default=0)
+    popularity.set_defaults(handler=command_popularity_backtest)
+
     ml_predict = subparsers.add_parser(
         "ml-predict", help="Predire uniquement si un modele est qualifie"
     )
@@ -520,6 +584,9 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--simulations", type=int, default=2_000)
     ml_predict.add_argument("--seed", type=int, default=0)
     ml_predict.add_argument("--force", action="store_true")
+    ml_predict.add_argument("--value-aware", action="store_true")
+    ml_predict.add_argument("--max-expected-hit-loss", type=float, default=0.005)
+    ml_predict.add_argument("--popularity-block-size", type=int, default=12)
     ml_predict.set_defaults(handler=command_ml_predict)
 
     ml_record = subparsers.add_parser(
@@ -536,6 +603,9 @@ def build_parser() -> argparse.ArgumentParser:
     ml_record.add_argument("--simulations", type=int, default=2_000)
     ml_record.add_argument("--seed", type=int, default=0)
     ml_record.add_argument("--force", action="store_true")
+    ml_record.add_argument("--value-aware", action="store_true")
+    ml_record.add_argument("--max-expected-hit-loss", type=float, default=0.005)
+    ml_record.add_argument("--popularity-block-size", type=int, default=12)
     ml_record.add_argument(
         "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
     )
