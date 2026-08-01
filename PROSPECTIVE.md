@@ -85,3 +85,10 @@ alpha, `0,008333`, et reste a zero score sur 100. Tete append-only :
 2 pour conserver la chaine JSON canonique originale et sa representation lisible; le schema 1 reste
 verifiable. Empreinte du bundle :
 `4ddf625a48a934e4cbc2a204e01494c8afdb87dc882ad755fb98f46fa111fb16`.
+
+Apres publication de l'archive FDJ du 1er aout, le tirage officiel `5 6 8 30 37`, Chance `4`, a
+score les deux previsions sans modification retrospective. La v0.16 obtient zero hit principal et
+la v0.17 un hit (`6`); aucune ne trouve le numero Chance. Chaque cohorte reste
+`insufficient_data` avec un score sur 100. Tete de la chaine des scores :
+`c581084c20a25d5af229368b2782b09d2ddd53a07e6d509b8879f01670a5d6cb`. Empreinte du bundle
+score : `289068dcd5388665bbda32a4e3b94728b2c2f93754698429944ddee78567cd10`.

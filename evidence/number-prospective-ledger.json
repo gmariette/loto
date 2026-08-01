@@ -5,9 +5,9 @@
     "valid": true,
     "errors": [],
     "forecasts": 2,
-    "scores": 0,
+    "scores": 2,
     "forecast_head_hash": "87d58a32a7eb11eb105d60990ac0b3a6db8a3553219290f384eecde2ddf57ccf",
-    "score_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "score_head_hash": "c581084c20a25d5af229368b2782b09d2ddd53a07e6d509b8879f01670a5d6cb",
     "cohorts": [
       {
         "evaluation_cohort": "4be41500c3a70d640cc93763ba4af697875b5e1183a4236a82733e5bc50f91da",
@@ -19,13 +19,13 @@
           "ridge_ranker"
         ],
         "forecasts": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.025,
-        "mean_main_hits": null,
+        "mean_main_hits": 0.0,
         "uniform_expected_main_hits": 0.5102040816326531,
-        "main_hit_uplift": null,
+        "main_hit_uplift": -0.5102040816326531,
         "uplift_ci_low": null,
         "uplift_ci_high": null,
         "exact_p_value": null,
@@ -42,13 +42,13 @@
           "rolling_ridge_ranker"
         ],
         "forecasts": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.008333333333333333,
-        "mean_main_hits": null,
+        "mean_main_hits": 1.0,
         "uniform_expected_main_hits": 0.5102040816326531,
-        "main_hit_uplift": null,
+        "main_hit_uplift": 0.4897959183673469,
         "uplift_ci_low": null,
         "uplift_ci_high": null,
         "exact_p_value": null,
@@ -310,5 +310,84 @@
       "payload_canonical_json": "{\"model_specification\":{\"format\":\"loto-lab.number-model\",\"parameters\":{\"game\":\"loto\",\"min_history\":50,\"min_train\":500,\"models\":[\"bayesian\",\"rolling_bayesian\",\"logistic\",\"gradient_boosting\",\"logistic_ranker\",\"ridge_ranker\",\"rolling_ridge_ranker\"],\"outer_folds\":3,\"seed\":20260801,\"simulations\":2000},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"bbcb709cbb00314a2d824ef003af169fb05629f904220df6993642bcc84c7faa\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/ml.py\",\"sha256\":\"b359b9f4d2b661a457d0b6e0ceecfa81dcb2a2269e70f159b9ecc8666acff84b\"},{\"path\":\"loto_lab/number_prospective.py\",\"sha256\":\"caec457ca8f76c26e939e9ad629cd670f43857b3722cfa3aadf113ccbffc04e3\"}],\"specification_version\":1},\"prediction\":{\"chance\":9,\"game\":\"loto\",\"marginal_probabilities\":{\"6\":0.1049557706044051,\"20\":0.10496720579149382,\"40\":0.1049557706044051,\"42\":0.10608164513277492,\"44\":0.10508474999511017},\"model\":\"rolling_ridge_ranker\",\"numbers\":[6,20,40,42,44],\"parameters\":{\"alpha\":1.0,\"uniform_blend\":1.0},\"probability_spread\":0.008717956862215617,\"status\":\"forced_experimental\",\"target_date\":\"2026-08-01\",\"training_last_date\":\"2026-07-29\",\"validation\":{\"adjusted_p_value\":1.0,\"adjusted_top5_p_value\":0.2798600699650175,\"delta_ci_high\":1.9993820679685264e-06,\"delta_ci_low\":-3.390107886641509e-06,\"mean_brier_delta\":-7.070842186101039e-07,\"mean_top5_hits\":0.5388739946380697,\"qualification_basis\":\"none\",\"qualified\":false,\"test_draws\":2238,\"top5_ci_high\":0.057266874578249555,\"top5_ci_low\":0.0014022633181959294,\"top5_hit_uplift\":0.028669913005416665,\"uniform_expected_top5_hits\":0.5102040816326531},\"warning\":\"Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.\"},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2859,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-07-29\",\"sha256\":\"fcca54e2faa19a850241512829a708c89d3c662a45b9495d78c313875f303423\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"562e265e917a6f15d1103fd8f63f55b21b56516313fce365bec0afb89c5a59ff\",\"size\":4161536}]}}}"
     }
   ],
-  "scores": []
+  "scores": [
+    {
+      "id": 1,
+      "forecast_id": 1,
+      "scored_at": "2026-08-01T20:27:04.695544+00:00",
+      "main_hits": 0,
+      "chance_hit": 0,
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_hash": "c545955464d8ce65521c24402bb5a5d61da985cfd4117eeca4629c0cd92b6c05",
+      "draw": {
+        "chance": 4,
+        "draw_date": "2026-08-01",
+        "game": "loto",
+        "main": [
+          5,
+          6,
+          8,
+          30,
+          37
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2860,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-01",
+            "sha256": "cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4",
+              "size": 4161536
+            }
+          ]
+        },
+        "result_source": "https://www.fdj.fr/jeux-de-tirage/loto/historique"
+      }
+    },
+    {
+      "id": 2,
+      "forecast_id": 2,
+      "scored_at": "2026-08-01T20:27:04.695544+00:00",
+      "main_hits": 1,
+      "chance_hit": 0,
+      "previous_hash": "c545955464d8ce65521c24402bb5a5d61da985cfd4117eeca4629c0cd92b6c05",
+      "record_hash": "c581084c20a25d5af229368b2782b09d2ddd53a07e6d509b8879f01670a5d6cb",
+      "draw": {
+        "chance": 4,
+        "draw_date": "2026-08-01",
+        "game": "loto",
+        "main": [
+          5,
+          6,
+          8,
+          30,
+          37
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2860,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-01",
+            "sha256": "cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4",
+              "size": 4161536
+            }
+          ]
+        },
+        "result_source": "https://www.fdj.fr/jeux-de-tirage/loto/historique"
+      }
+    }
+  ]
 }
