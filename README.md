@@ -125,12 +125,13 @@ Demander une prediction avec abstention obligatoire :
 loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
 ```
 
-Le programme ne renvoie des numeros que si la borne haute a 95 % du delta Brier est negative et
-si le test de permutation reste significatif apres correction de Holm. `--force` existe pour les
-experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
+Le programme ne renvoie des numeros que si le modele se qualifie sur l'une de deux voies : Brier
+significativement meilleur que l'uniforme, ou gain de hits Top-5 dont la borne basse est positive.
+Les p-values des quatre modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
+existe pour les experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
 Elle publie aussi le jeu, la cible, la derniere date d'apprentissage, le delta Brier, son intervalle,
-la p-value corrigee et l'amplitude des probabilites afin qu'une grille ne soit jamais detachee de sa
-preuve de non-qualification.
+les hits Top-5, leurs intervalles et p-values corrigees, ainsi que l'amplitude des probabilites afin
+qu'une grille ne soit jamais detachee de sa preuve de non-qualification.
 
 ### Esperance monetaire
 

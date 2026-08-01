@@ -135,10 +135,13 @@ tirages Super Loto et Grand Loto. La selection des hyperparametres et du poids d
 retraction vers l'uniforme est effectuee dans une fenetre temporelle interne; seul le fold externe
 sert a annoncer la performance.
 
-Les criteres de qualification sont cumulatifs : delta Brier moyen negatif, borne haute bootstrap
-a 95 % negative et test de permutation corrige par Holm inferieur a 5 %. Sans cela, l'API renvoie
-`abstention`. Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous
-mauvais en faux pronostic.
+La qualification dispose de deux voies. La voie probabiliste exige un delta Brier moyen negatif,
+une borne haute bootstrap negative et une p-value de permutation corrigee inferieure a 5 %. La voie
+de classement compare directement les hits du Top-5 a l'esperance uniforme exacte `25/49`; elle
+exige une borne basse positive et une p-value hypergeometrique corrigee inferieure a 5 %. Holm porte
+conjointement sur les quatre modeles et les deux metriques. Sans cela, l'API renvoie `abstention`.
+Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous mauvais en faux
+pronostic.
 
 ## 9. Valeur monetaire
 

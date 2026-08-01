@@ -7,6 +7,9 @@ import numpy as np
 from loto_lab.domain import Draw
 from loto_lab.ml import (
     _fit_predict,
+    _holm_values,
+    _top5_indices,
+    _top5_inference,
     blend_with_uniform,
     build_feature_dataset,
     nested_ml_backtest,
@@ -40,6 +43,26 @@ class MLTests(unittest.TestCase):
         blended = blend_with_uniform(probabilities, 0.0)
         np.testing.assert_allclose(blended, 5 / 49)
 
+    def test_uniform_ties_have_seeded_random_ranking(self) -> None:
+        probabilities = np.full(49, 5 / 49)
+        first = _top5_indices(probabilities, np.random.default_rng(42))
+        second = _top5_indices(probabilities, np.random.default_rng(42))
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(len(set(first)), 5)
+
+    def test_top5_inference_detects_large_hit_uplift(self) -> None:
+        uplift, low, high, p_value = _top5_inference(
+            np.full(100, 5.0), simulations=100, seed=42
+        )
+        self.assertGreater(uplift, 0)
+        self.assertGreater(low, 0)
+        self.assertGreater(high, 0)
+        self.assertLess(p_value, 0.05)
+
+    def test_holm_adjustment_is_monotone(self) -> None:
+        adjusted = _holm_values([0.01, 0.02, 0.5])
+        np.testing.assert_allclose(adjusted, [0.03, 0.04, 0.5])
+
     def test_feature_dataset_has_one_row_per_number(self) -> None:
         dataset = build_feature_dataset(dated_random_draws(80), min_history=20)
         self.assertEqual(dataset.x.shape[1], 49)
@@ -56,6 +79,13 @@ class MLTests(unittest.TestCase):
             models=("bayesian",),
         )
         self.assertEqual(results[0].test_draws, 100)
+        self.assertAlmostEqual(results[0].uniform_expected_top5_hits, 25 / 49)
+        self.assertGreaterEqual(results[0].top5_p_value, 0.0)
+        self.assertLessEqual(results[0].top5_p_value, 1.0)
+        self.assertEqual(
+            results[0].qualified,
+            results[0].probability_qualified or results[0].ranking_qualified,
+        )
         prediction = predict_next_draw(draws, results, date(2021, 1, 1))
         if not results[0].qualified:
             self.assertEqual(prediction["status"], "abstention")
@@ -66,6 +96,7 @@ class MLTests(unittest.TestCase):
             )
             self.assertFalse(forced["validation"]["qualified"])
             self.assertIn("mean_brier_delta", forced["validation"])
+            self.assertIn("top5_hit_uplift", forced["validation"])
             self.assertGreaterEqual(forced["probability_spread"], 0.0)
 
     def test_rolling_bayesian_uses_only_past_window_frequencies(self) -> None:

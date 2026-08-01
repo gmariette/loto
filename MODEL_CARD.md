@@ -25,7 +25,8 @@ dix classes supplementaire.
 - Selection des hyperparametres dans le passe de chaque fold externe.
 - Score de Brier, log-loss, calibration et nombre de hits Top-5.
 - Intervalle bootstrap, permutation appariee et correction de Holm.
-- Qualification uniquement si l'intervalle du delta Brier est entierement meilleur que zero.
+- Qualification probabiliste par delta Brier ou qualification de classement par gain Top-5.
+- Null Top-5 hypergeometrique exact et Holm conjoint sur les modeles et les deux metriques.
 - Participation inferee par le rang 9 et comparee a une mediane segmentee sur des folds futurs.
 - Biais de retransformation mesure en niveau et facteur de smearing estime sans donnees futures.
 - Backtest de valeur walk-forward comparant MAE/RMSE, couverture et decisions a une reference naive.

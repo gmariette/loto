@@ -326,6 +326,15 @@ class MLBacktestResult:
     uniform_log_loss: float
     calibration_error: float
     mean_top5_hits: float
+    uniform_expected_top5_hits: float
+    top5_hit_uplift: float
+    top5_ci_low: float
+    top5_ci_high: float
+    top5_p_value: float
+    adjusted_top5_p_value: float
+    probability_qualified: bool
+    ranking_qualified: bool
+    qualification_basis: str
     qualified: bool
 
     def to_dict(self) -> dict[str, object]:
@@ -385,6 +394,38 @@ def _confidence_and_permutation(
     )
 
 
+def _top5_inference(
+    hits: np.ndarray, simulations: int, seed: int
+) -> tuple[float, float, float, float]:
+    expected = DEFAULT_RULES.main_drawn**2 / DEFAULT_RULES.main_pool
+    uplifts = np.asarray(hits, dtype=float) - expected
+    rng = np.random.default_rng(seed)
+    bootstrap = np.asarray(
+        [rng.choice(uplifts, size=len(uplifts), replace=True).mean() for _ in range(simulations)]
+    )
+    observed = float(uplifts.mean())
+    null_means = rng.hypergeometric(
+        DEFAULT_RULES.main_drawn,
+        DEFAULT_RULES.main_pool - DEFAULT_RULES.main_drawn,
+        DEFAULT_RULES.main_drawn,
+        size=(simulations, len(hits)),
+    ).mean(axis=1)
+    p_value = (int(np.count_nonzero(null_means - expected >= observed)) + 1) / (
+        simulations + 1
+    )
+    return (
+        observed,
+        float(np.quantile(bootstrap, 0.025)),
+        float(np.quantile(bootstrap, 0.975)),
+        p_value,
+    )
+
+
+def _top5_indices(probabilities: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    tie_breakers = rng.random(len(probabilities))
+    return np.lexsort((tie_breakers, probabilities))[-DEFAULT_RULES.main_drawn :]
+
+
 def _backtest_one_model(
     dataset: FeatureDataset,
     model_name: str,
@@ -425,10 +466,21 @@ def _backtest_one_model(
     baseline_scores = _brier_by_draw(baseline, actual)
     deltas = scores - baseline_scores
     ci_low, ci_high, p_value = _confidence_and_permutation(deltas, simulations, seed)
-    hits = [
-        len(set(np.argsort(row)[-5:]).intersection(np.flatnonzero(target)))
-        for row, target in zip(predicted, actual, strict=True)
-    ]
+    ranking_rng = np.random.default_rng(seed)
+    hits = np.asarray(
+        [
+            len(
+                set(_top5_indices(row, ranking_rng)).intersection(
+                    np.flatnonzero(target)
+                )
+            )
+            for row, target in zip(predicted, actual, strict=True)
+        ],
+        dtype=float,
+    )
+    top5_uplift, top5_low, top5_high, top5_p_value = _top5_inference(
+        hits, simulations, seed + 1
+    )
     final = _select_parameters(
         dataset, model_name, np.arange(dataset.draw_count), seed + outer_folds
     )
@@ -448,28 +500,66 @@ def _backtest_one_model(
         mean_log_loss=_log_loss(predicted, actual),
         uniform_log_loss=_log_loss(baseline, actual),
         calibration_error=_calibration_error(predicted, actual),
-        mean_top5_hits=sum(hits) / len(hits),
+        mean_top5_hits=float(hits.mean()),
+        uniform_expected_top5_hits=(
+            DEFAULT_RULES.main_drawn**2 / DEFAULT_RULES.main_pool
+        ),
+        top5_hit_uplift=top5_uplift,
+        top5_ci_low=top5_low,
+        top5_ci_high=top5_high,
+        top5_p_value=top5_p_value,
+        adjusted_top5_p_value=1.0,
+        probability_qualified=False,
+        ranking_qualified=False,
+        qualification_basis="none",
         qualified=False,
     )
 
 
-def _holm_adjust(results: list[MLBacktestResult]) -> list[MLBacktestResult]:
-    order = sorted(range(len(results)), key=lambda index: results[index].permutation_p_value)
-    adjusted = [1.0] * len(results)
+def _holm_values(p_values: list[float]) -> list[float]:
+    order = sorted(range(len(p_values)), key=lambda index: p_values[index])
+    adjusted = [1.0] * len(p_values)
     running = 0.0
-    total = len(results)
+    total = len(p_values)
     for position, index in enumerate(order):
-        value = min(1.0, (total - position) * results[index].permutation_p_value)
+        value = min(1.0, (total - position) * p_values[index])
         running = max(running, value)
         adjusted[index] = running
-    return [
-        replace(
-            result,
-            adjusted_p_value=adjusted[index],
-            qualified=result.delta_ci_high < 0 and adjusted[index] < 0.05,
+    return adjusted
+
+
+def _holm_adjust(results: list[MLBacktestResult]) -> list[MLBacktestResult]:
+    test_count = len(results)
+    combined = _holm_values(
+        [result.permutation_p_value for result in results]
+        + [result.top5_p_value for result in results]
+    )
+    adjusted = combined[:test_count]
+    adjusted_top5 = combined[test_count:]
+    updated = []
+    for index, result in enumerate(results):
+        probability_qualified = result.delta_ci_high < 0 and adjusted[index] < 0.05
+        ranking_qualified = result.top5_ci_low > 0 and adjusted_top5[index] < 0.05
+        if probability_qualified and ranking_qualified:
+            basis = "probability_and_ranking"
+        elif probability_qualified:
+            basis = "probability"
+        elif ranking_qualified:
+            basis = "ranking"
+        else:
+            basis = "none"
+        updated.append(
+            replace(
+                result,
+                adjusted_p_value=adjusted[index],
+                adjusted_top5_p_value=adjusted_top5[index],
+                probability_qualified=probability_qualified,
+                ranking_qualified=ranking_qualified,
+                qualification_basis=basis,
+                qualified=probability_qualified or ranking_qualified,
+            )
         )
-        for index, result in enumerate(results)
-    ]
+    return updated
 
 
 def nested_ml_backtest(
@@ -528,11 +618,21 @@ def predict_next_draw(
                 "game": game,
                 "target_date": target_date,
                 "training_last_date": max(dated) if dated else None,
-                "reason": "Aucun modele ne bat l'uniforme avec un intervalle a 95% et Holm < 5%.",
+                "reason": (
+                    "Aucun modele ne bat l'uniforme en probabilite ou en hits Top-5 "
+                    "avec un intervalle a 95% et Holm < 5%."
+                ),
             }
         qualified = list(results)
         status = "forced_experimental"
-    champion = min(qualified, key=lambda result: result.mean_brier_delta)
+        champion = max(qualified, key=lambda result: result.top5_hit_uplift)
+    else:
+        ranking_qualified = [result for result in qualified if result.ranking_qualified]
+        champion = (
+            max(ranking_qualified, key=lambda result: result.top5_hit_uplift)
+            if ranking_qualified
+            else min(qualified, key=lambda result: result.mean_brier_delta)
+        )
     dataset = build_feature_dataset(selected_draws)
     target = next_feature_matrix(selected_draws, target_date, game)
     predicted = _fit_predict(
@@ -561,6 +661,13 @@ def predict_next_draw(
             "delta_ci_low": champion.delta_ci_low,
             "delta_ci_high": champion.delta_ci_high,
             "adjusted_p_value": champion.adjusted_p_value,
+            "uniform_expected_top5_hits": champion.uniform_expected_top5_hits,
+            "mean_top5_hits": champion.mean_top5_hits,
+            "top5_hit_uplift": champion.top5_hit_uplift,
+            "top5_ci_low": champion.top5_ci_low,
+            "top5_ci_high": champion.top5_ci_high,
+            "adjusted_top5_p_value": champion.adjusted_top5_p_value,
+            "qualification_basis": champion.qualification_basis,
             "qualified": champion.qualified,
         },
         "numbers": top,

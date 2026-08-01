@@ -43,16 +43,31 @@ le fold correspondant.
 
 | Modele | Delta Brier | IC 95 % du delta | Log-loss | Hits Top-5 | Qualifie |
 |---|---:|---:|---:|---:|---:|
-| Bayesien cumulatif | +0,00000478 | [-0,00000063 ; +0,00001026] | 0,32957 | 0,5121 | non |
-| Bayesien temporel | +0,00000143 | [-0,00000190 ; +0,00000485] | 0,32955 | 0,5000 | non |
+| Bayesien cumulatif | +0,00000478 | [-0,00000063 ; +0,00001026] | 0,32957 | 0,5152 | non |
+| Bayesien temporel | +0,00000143 | [-0,00000190 ; +0,00000485] | 0,32955 | 0,4933 | non |
 | Logistique retractee | +0,00000321 | [-0,00000675 ; +0,00001362] | 0,32956 | 0,5232 | non |
-| Gradient boosting retracte | 0 | [0 ; 0] | 0,32954 | 0,5098 | non |
+| Gradient boosting retracte | 0 | [0 ; 0] | 0,32954 | 0,5147 | non |
 
 La log-loss uniforme vaut `0,32954`. Le challenger temporel reduit d'environ 70 % la degradation du
 bayesien cumulatif, mais ne franchit pas zero. La logistique obtient davantage de hits Top-5 sans
 ameliorer significativement son score probabiliste. Le gradient boosting choisit une retraction
 totale et reproduit exactement le benchmark. Aucun modele ne se qualifie; `ml-predict` renvoie donc
 `abstention`.
+
+La version 0.14 teste aussi directement le classement d'une grille. Les egalites de probabilites
+sont departagees par un alea reproductible, puis les hits sont compares a `25/49`. L'intervalle est
+bootstrappe et la p-value vient du null hypergeometrique exact; Holm corrige conjointement les quatre
+tests Brier et les quatre tests Top-5.
+
+| Modele | Hits Top-5 | Gain vs 25/49 | IC 95 % du gain | p Holm | Qualifie classement |
+|---|---:|---:|---:|---:|---:|
+| Bayesien cumulatif | 0,5152 | +0,0050 | [-0,0232 ; +0,0318] | 1,000 | non |
+| Bayesien temporel | 0,4933 | -0,0169 | [-0,0437 ; +0,0099] | 1,000 | non |
+| Logistique retractee | 0,5232 | +0,0130 | [-0,0133 ; +0,0398] | 1,000 | non |
+| Gradient boosting retracte | 0,5147 | +0,0045 | [-0,0209 ; +0,0309] | 1,000 | non |
+
+La logistique reste la meilleure en hits bruts, mais son intervalle couvre largement zero. Cette
+nouvelle metrique ne justifie donc toujours pas une grille predictive.
 
 ## Participation et esperance monetaire
 
