@@ -1,0 +1,164 @@
+{
+  "format": "loto-lab.number-prospective-ledger",
+  "schema_version": 1,
+  "ledger": {
+    "valid": true,
+    "errors": [],
+    "forecasts": 1,
+    "scores": 0,
+    "forecast_head_hash": "bb1e78b077333218599ea3faadb94083fd09466c5d7566e078d412fb7de87c5b",
+    "score_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "cohorts": [
+      {
+        "evaluation_cohort": "4be41500c3a70d640cc93763ba4af697875b5e1183a4236a82733e5bc50f91da",
+        "cohort_index": 1,
+        "model_versions": [
+          "0.16.0"
+        ],
+        "models": [
+          "ridge_ranker"
+        ],
+        "forecasts": 1,
+        "scores": 0,
+        "qualification_scores": 0,
+        "qualification_target": 100,
+        "alpha_budget": 0.025,
+        "mean_main_hits": null,
+        "uniform_expected_main_hits": 0.5102040816326531,
+        "main_hit_uplift": null,
+        "uplift_ci_low": null,
+        "uplift_ci_high": null,
+        "exact_p_value": null,
+        "chance_hits": 0,
+        "qualification_status": "insufficient_data"
+      }
+    ]
+  },
+  "forecasts": [
+    {
+      "id": 1,
+      "created_at": "2026-08-01T16:55:57.772170+00:00",
+      "model_version": "0.16.0",
+      "evaluation_cohort": "4be41500c3a70d640cc93763ba4af697875b5e1183a4236a82733e5bc50f91da",
+      "cohort_index": 1,
+      "game": "loto",
+      "target_date": "2026-08-01",
+      "training_last_date": "2026-07-29",
+      "historical_status": "forced_experimental",
+      "model": "ridge_ranker",
+      "chance": 9,
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_hash": "bb1e78b077333218599ea3faadb94083fd09466c5d7566e078d412fb7de87c5b",
+      "main": [
+        1,
+        11,
+        14,
+        33,
+        43
+      ],
+      "payload": {
+        "model_specification": {
+          "format": "loto-lab.number-model",
+          "parameters": {
+            "game": "loto",
+            "min_history": 50,
+            "min_train": 500,
+            "models": [
+              "bayesian",
+              "rolling_bayesian",
+              "logistic",
+              "gradient_boosting",
+              "logistic_ranker",
+              "ridge_ranker"
+            ],
+            "outer_folds": 3,
+            "seed": 20260801,
+            "simulations": 2000
+          },
+          "runtime": {
+            "numpy": "2.4.2",
+            "python": "3.12.6",
+            "scikit-learn": "1.7.0"
+          },
+          "sha256": "4be41500c3a70d640cc93763ba4af697875b5e1183a4236a82733e5bc50f91da",
+          "source_files": [
+            {
+              "path": "loto_lab/domain.py",
+              "sha256": "bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558"
+            },
+            {
+              "path": "loto_lab/ml.py",
+              "sha256": "968453435bcb24e5b7935a2dfe6139ee2a11bc14590223e91a9ba5926fc730f7"
+            },
+            {
+              "path": "loto_lab/number_prospective.py",
+              "sha256": "caec457ca8f76c26e939e9ad629cd670f43857b3722cfa3aadf113ccbffc04e3"
+            }
+          ],
+          "specification_version": 1
+        },
+        "prediction": {
+          "chance": 9,
+          "game": "loto",
+          "marginal_probabilities": {
+            "1": 0.10630946730236315,
+            "11": 0.10644201796771485,
+            "14": 0.10729986179375338,
+            "33": 0.10879479513111172,
+            "43": 0.10896921837480629
+          },
+          "model": "ridge_ranker",
+          "numbers": [
+            1,
+            11,
+            14,
+            33,
+            43
+          ],
+          "parameters": {
+            "alpha": 1000.0,
+            "uniform_blend": 1.0
+          },
+          "probability_spread": 0.014491248381996336,
+          "status": "forced_experimental",
+          "target_date": "2026-08-01",
+          "training_last_date": "2026-07-29",
+          "validation": {
+            "adjusted_p_value": 1.0,
+            "adjusted_top5_p_value": 0.8575712143928036,
+            "delta_ci_high": 0.00020210867810056062,
+            "delta_ci_low": 0.000103422544844315,
+            "mean_brier_delta": 0.00015258700634871255,
+            "mean_top5_hits": 0.5303842716711349,
+            "qualification_basis": "none",
+            "qualified": false,
+            "test_draws": 2238,
+            "top5_ci_high": 0.04788349656216375,
+            "top5_ci_low": -0.006629461436048929,
+            "top5_hit_uplift": 0.020180190038481906,
+            "uniform_expected_top5_hits": 0.5102040816326531
+          },
+          "warning": "Une sortie forcee reste experimentale et ne constitue pas un avantage prouve."
+        },
+        "provenance": {
+          "data": {
+            "draws_snapshot": {
+              "count": 2859,
+              "first_date": "2008-10-06",
+              "last_date": "2026-07-29",
+              "sha256": "fcca54e2faa19a850241512829a708c89d3c662a45b9495d78c313875f303423"
+            },
+            "files": [
+              {
+                "path": "data/loto.sqlite",
+                "sha256": "562e265e917a6f15d1103fd8f63f55b21b56516313fce365bec0afb89c5a59ff",
+                "size": 4161536
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "scores": []
+}
