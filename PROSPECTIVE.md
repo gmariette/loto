@@ -25,3 +25,7 @@ ajoute `expected_return_rate` et reserve `estimated_roi` au ROI net, sans reecri
 
 Le [snapshot autonome du registre](evidence/prospective-ledger.json) reproduit le meme hash. Il peut
 etre controle sans la base locale avec `loto-lab ledger-verify evidence/prospective-ledger.json`.
+
+La version 0.9 ajoute aux nouvelles previsions les hashes des fichiers et du contenu logique charge,
+puis lie la source HTTPS FDJ a chaque score. Ces informations ne sont pas ajoutees a cette prevision
+v0.7 apres coup: son payload original et son hash public restent la seule preuve recevable.

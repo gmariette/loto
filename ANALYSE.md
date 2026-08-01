@@ -195,3 +195,16 @@ comparaison avec la publication officielle.
 Le scoring applique la meme barriere temporelle que l'enregistrement: un tirage cible ne peut pas
 etre note avant 20 h 15, heure de Paris. Le bundle verifie egalement que le jeu et la date du bareme
 correspondent a la prevision et que l'heure de scoring est posterieure a cette cloture.
+
+## 12. Provenance reproductible
+
+Un chemin de fichier ne suffit pas a identifier les donnees utilisees: son contenu peut changer
+entre deux executions. La version 0.9.0 calcule donc le SHA-256 et la taille de chaque entree, puis
+un second SHA-256 sur la representation canonique de tous les tirages effectivement charges. Ce
+second niveau couvre notamment le contenu logique d'une base SQLite meme si son stockage physique
+ou son journal WAL differe.
+
+Les scores v2 incluent ces empreintes et l'URL HTTPS FDJ du resultat dans leur hash. La migration
+ajoute les colonnes de provenance sans recalculer les anciens hashes; un verificateur choisit
+l'algorithme v1 ou v2 ligne par ligne. Cette compatibilite est necessaire: reecrire une ancienne
+preuve au nom d'une meilleure provenance detruirait precisement sa valeur chronologique.

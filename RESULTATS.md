@@ -142,6 +142,13 @@ La version 0.8.0 corrige l'ambiguite de vocabulaire du rapport: le champ v0.7
 intacte et cette correction est explicite plutot que retroactive. Un bundle exportable permet en
 outre de verifier hors SQLite les deux chaines et de recalculer chaque score depuis son bareme.
 
+La version 0.9.0 rend la provenance reproductible pour toutes les nouvelles lignes. Elle hache les
+fichiers d'entree et le snapshot logique des tirages charges. Chaque nouveau score utilise un hash
+v2 qui lie aussi l'URL HTTPS FDJ du resultat et ces empreintes. Le registre migre automatiquement
+les anciennes lignes en les laissant en hash v1; les preuves v1 et v2 restent verifiables. La
+prevision du 1er aout reste volontairement une preuve v0.7 et n'acquiert pas retroactivement une
+provenance qu'elle n'avait pas au moment de son ancrage.
+
 ## Regime historique : 6/49 + complementaire
 
 Echantillon separe : 2 707 tirages du 3 janvier 1996 au 4 octobre 2008, dont 2 664 Loto et

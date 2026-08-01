@@ -31,6 +31,7 @@ dix classes supplementaire.
 - Reentrainement toutes les 52 dates et calibration interne de l'horizon et des queues predictives.
 - Registre prospectif append-only, chaine SHA-256 et scoring seulement apres publication du bareme.
 - Bundle JSON autonome: verification des chaines et recalcul des metriques depuis chaque bareme.
+- Empreintes SHA-256 des fichiers et du snapshot logique; source FDJ incluse dans chaque score v2.
 
 ## Limites
 
@@ -47,6 +48,7 @@ dix classes supplementaire.
 - Une chaine locale ne prouve sa chronologie que si son hash est publie avant le tirage.
 - Le bundle prouve la coherence interne, pas l'authenticite du bareme; sa source officielle reste
   indispensable.
+- Un hash de fichier prouve l'identite d'une entree, pas sa qualite ni son exhaustivite.
 - Une seule prevision prospective est actuellement en attente; aucune performance future ne peut
   encore etre estimee.
 

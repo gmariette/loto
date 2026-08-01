@@ -26,6 +26,7 @@ from .probability import (
     total_outcomes,
 )
 from .prospective import (
+    build_data_provenance,
     export_ledger_evidence,
     ledger_info,
     record_value_forecast,
@@ -194,7 +195,7 @@ def command_value_record(args: argparse.Namespace) -> None:
         seed=args.seed,
     )
     provenance = {
-        "data": [str(path) for path in args.data],
+        "data": build_data_provenance(args.data, draws),
         "jackpot_source": args.jackpot_source,
         "bootstrap_simulations": args.simulations,
         "seed": args.seed,
@@ -218,8 +219,12 @@ def command_value_record(args: argparse.Namespace) -> None:
 
 def command_value_score(args: argparse.Namespace) -> None:
     draws = load_draws_many(args.data)
+    provenance = {
+        "data": build_data_provenance(args.data, draws),
+        "result_source": args.result_source,
+    }
     payload = {
-        **score_pending_forecasts(args.ledger, draws),
+        **score_pending_forecasts(args.ledger, draws, provenance=provenance),
         "ledger": ledger_info(args.ledger),
     }
     if args.export:
@@ -496,6 +501,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     value_score.add_argument("data", type=Path, nargs="+")
     value_score.add_argument("--ledger", type=Path, default=Path("data/prospective.sqlite"))
+    value_score.add_argument(
+        "--result-source",
+        required=True,
+        help="URL HTTPS FDJ du resultat et du bareme officiels",
+    )
     value_score.add_argument(
         "--export",
         type=Path,

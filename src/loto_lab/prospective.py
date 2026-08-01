@@ -7,6 +7,7 @@ import sqlite3
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from statistics import fmean
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from . import __version__
@@ -19,7 +20,9 @@ GENESIS_HASH = "0" * 64
 PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
 LOTO_RECORDING_CUTOFF = time(20, 15)
 EVIDENCE_FORMAT = "loto-lab.prospective-ledger"
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
+SUPPORTED_EVIDENCE_SCHEMA_VERSIONS = (1, 2)
+CURRENT_LEDGER_SCHEMA_VERSION = 2
 
 LEDGER_SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -61,6 +64,8 @@ CREATE TABLE IF NOT EXISTS value_scores (
     false_positive INTEGER NOT NULL CHECK (false_positive IN (0, 1)),
     false_negative INTEGER NOT NULL CHECK (false_negative IN (0, 1)),
     draw_json TEXT NOT NULL,
+    score_provenance_json TEXT NOT NULL DEFAULT '{}',
+    hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2)),
     previous_hash TEXT NOT NULL,
     record_hash TEXT NOT NULL UNIQUE
 );
@@ -109,8 +114,26 @@ def _connect(path: str | Path) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(LEDGER_SCHEMA)
+    score_columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(value_scores)").fetchall()
+    }
+    if "score_provenance_json" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "score_provenance_json TEXT NOT NULL DEFAULT '{}'"
+        )
+    if "hash_version" not in score_columns:
+        connection.execute(
+            "ALTER TABLE value_scores ADD COLUMN "
+            "hash_version INTEGER NOT NULL DEFAULT 1 CHECK (hash_version IN (1, 2))"
+        )
     connection.execute(
-        "INSERT OR IGNORE INTO ledger_metadata(key, value) VALUES ('schema_version', '1')"
+        """
+        INSERT INTO ledger_metadata(key, value) VALUES ('schema_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (str(CURRENT_LEDGER_SCHEMA_VERSION),),
     )
     connection.commit()
     return connection
@@ -157,16 +180,23 @@ def _score_hash(
     previous_hash: str,
     draw_json: str,
     metrics: dict[str, float | int],
+    *,
+    provenance_json: str = "{}",
+    hash_version: int = 1,
 ) -> str:
-    return _digest(
-        {
-            "scored_at": scored_at,
-            "forecast_hash": forecast_hash,
-            "previous_hash": previous_hash,
-            "draw_json": draw_json,
-            "metrics": metrics,
-        }
-    )
+    payload: dict[str, object] = {
+        "scored_at": scored_at,
+        "forecast_hash": forecast_hash,
+        "previous_hash": previous_hash,
+        "draw_json": draw_json,
+        "metrics": metrics,
+    }
+    if hash_version == 2:
+        payload["hash_version"] = hash_version
+        payload["score_provenance_json"] = provenance_json
+    elif hash_version != 1:
+        raise ValueError(f"Version de hash de score inconnue: {hash_version}")
+    return _digest(payload)
 
 
 def _recording_is_open(target_date: date, current_time: datetime) -> bool:
@@ -184,8 +214,10 @@ def record_value_forecast(
     report: ValueReport,
     *,
     model_version: str = __version__,
-    provenance: dict[str, object] | None = None,
+    provenance: dict[str, object],
 ) -> dict[str, object]:
+    _validate_official_source(provenance.get("jackpot_source"))
+    _validate_data_provenance(provenance.get("data"))
     if report.target_date is None:
         raise ValueError("Une prevision prospective exige une date cible")
     if report.target_date <= report.training_last_date:
@@ -194,9 +226,7 @@ def record_value_forecast(
     if not _recording_is_open(report.target_date, current_time):
         raise ValueError("Une prevision prospective ne peut pas etre retroactive")
     created_at = current_time.astimezone(UTC).isoformat()
-    report_json = _canonical_json(
-        {"report": report.to_dict(), "provenance": provenance or {}}
-    )
+    report_json = _canonical_json({"report": report.to_dict(), "provenance": provenance})
     connection = _connect(ledger)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -286,6 +316,89 @@ def _draw_payload(draw: Draw) -> dict[str, object]:
     }
 
 
+def build_data_provenance(
+    paths: list[str | Path], draws: list[Draw]
+) -> dict[str, object]:
+    files = []
+    for value in paths:
+        path = Path(value)
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        files.append(
+            {
+                "path": str(path),
+                "size": path.stat().st_size,
+                "sha256": digest.hexdigest(),
+            }
+        )
+    dated = [draw.draw_date for draw in draws if draw.draw_date is not None]
+    return {
+        "files": files,
+        "draws_snapshot": {
+            "count": len(draws),
+            "first_date": min(dated).isoformat() if dated else None,
+            "last_date": max(dated).isoformat() if dated else None,
+            "sha256": _digest([_draw_payload(draw) for draw in draws]),
+        },
+    }
+
+
+def _validate_official_source(value: object) -> str:
+    source = str(value)
+    parsed = urlparse(source)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not (
+        hostname == "fdj.fr" or hostname.endswith(".fdj.fr")
+    ):
+        raise ValueError("La source du resultat doit etre une URL HTTPS officielle FDJ")
+    return source
+
+
+def _valid_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_data_provenance(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("La provenance doit contenir les empreintes des donnees")
+    files = value.get("files")
+    snapshot = value.get("draws_snapshot")
+    if not isinstance(files, list) or not files or not isinstance(snapshot, dict):
+        raise ValueError("La provenance des donnees est incomplete")
+    for item in files:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("path"), str)
+            or not isinstance(item.get("size"), int)
+            or int(item["size"]) < 0
+            or not _valid_sha256(item.get("sha256"))
+        ):
+            raise ValueError("Une empreinte de fichier est invalide")
+    if (
+        not isinstance(snapshot.get("count"), int)
+        or int(snapshot["count"]) < 0
+        or not _valid_sha256(snapshot.get("sha256"))
+    ):
+        raise ValueError("L'empreinte logique des tirages est invalide")
+    return value
+
+
+def _uses_hashed_provenance(model_version: object) -> bool:
+    try:
+        parts = tuple(int(part) for part in str(model_version).split(".")[:2])
+    except ValueError:
+        return False
+    return parts >= (0, 9)
+
+
 def _observed_schedule_ev(draw: Draw) -> float | None:
     probabilities = {item.rank: item.probability for item in rank_probabilities()}
     jackpot = _draw_jackpot(draw)
@@ -310,8 +423,13 @@ def score_pending_forecasts(
     ledger: str | Path,
     draws: list[Draw],
     *,
+    provenance: dict[str, object],
     current_time: datetime | None = None,
 ) -> dict[str, object]:
+    _validate_official_source(provenance.get("result_source"))
+    _validate_data_provenance(provenance.get("data"))
+    score_provenance_json = _canonical_json(provenance)
+    hash_version = 2
     by_target = {
         (draw.game, draw.draw_date.isoformat()): draw
         for draw in draws
@@ -378,14 +496,16 @@ def score_pending_forecasts(
                 previous_hash,
                 draw_json,
                 metrics,
+                provenance_json=score_provenance_json,
+                hash_version=hash_version,
             )
             cursor = connection.execute(
                 """
                 INSERT INTO value_scores(
                     forecast_id, scored_at, observed_schedule_ev, error, absolute_error,
                     covered, observed_positive, false_positive, false_negative, draw_json,
-                    previous_hash, record_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    score_provenance_json, hash_version, previous_hash, record_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(forecast["id"]),
@@ -398,6 +518,8 @@ def score_pending_forecasts(
                     metrics["false_positive"],
                     metrics["false_negative"],
                     draw_json,
+                    score_provenance_json,
+                    hash_version,
                     previous_hash,
                     record_hash,
                 ),
@@ -407,6 +529,8 @@ def score_pending_forecasts(
                     "score_id": int(cursor.lastrowid),
                     "forecast_id": int(forecast["id"]),
                     **metrics,
+                    "provenance": provenance,
+                    "hash_version": hash_version,
                     "record_hash": record_hash,
                 }
             )
@@ -469,6 +593,8 @@ def verify_ledger(ledger: str | Path) -> dict[str, object]:
                 previous_hash,
                 str(row["draw_json"]),
                 metrics,
+                provenance_json=str(row["score_provenance_json"]),
+                hash_version=int(row["hash_version"]),
             )
             if str(row["previous_hash"]) != previous_hash or str(row["record_hash"]) != expected:
                 errors.append(f"score:{row['id']}")
@@ -564,6 +690,8 @@ def export_ledger_evidence(ledger: str | Path) -> dict[str, object]:
                     "false_positive": int(row["false_positive"]),
                     "false_negative": int(row["false_negative"]),
                     "draw": json.loads(str(row["draw_json"])),
+                    "provenance": json.loads(str(row["score_provenance_json"])),
+                    "hash_version": int(row["hash_version"]),
                     "previous_hash": str(row["previous_hash"]),
                     "record_hash": str(row["record_hash"]),
                 }
@@ -608,7 +736,7 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
     errors: list[str] = []
     if evidence.get("format") != EVIDENCE_FORMAT:
         errors.append("format")
-    if evidence.get("schema_version") != EVIDENCE_SCHEMA_VERSION:
+    if evidence.get("schema_version") not in SUPPORTED_EVIDENCE_SCHEMA_VERSIONS:
         errors.append("schema_version")
     forecasts_value = evidence.get("forecasts")
     scores_value = evidence.get("scores")
@@ -689,6 +817,19 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                     for key, value in numeric_comparisons.items()
                 ):
                     errors.append(f"{label}:report_mismatch")
+            if _uses_hashed_provenance(item["model_version"]):
+                provenance = payload.get("provenance")
+                if not isinstance(provenance, dict):
+                    errors.append(f"{label}:provenance")
+                else:
+                    try:
+                        _validate_official_source(provenance.get("jackpot_source"))
+                    except ValueError:
+                        errors.append(f"{label}:jackpot_source")
+                    try:
+                        _validate_data_provenance(provenance.get("data"))
+                    except ValueError:
+                        errors.append(f"{label}:data_provenance")
             forecast_hashes[forecast_id] = record_hash
             forecast_records[forecast_id] = item
             targets.add(target)
@@ -721,6 +862,11 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
             draw_payload = item["draw"]
             if not isinstance(draw_payload, dict):
                 raise TypeError
+            hash_version = int(item.get("hash_version", 1))
+            provenance = item.get("provenance", {})
+            if not isinstance(provenance, dict):
+                raise TypeError
+            provenance_json = _canonical_json(provenance)
             record_hash = str(item["record_hash"])
             expected = _score_hash(
                 str(item["scored_at"]),
@@ -728,6 +874,8 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                 previous_hash,
                 _canonical_json(draw_payload),
                 metrics,
+                provenance_json=provenance_json,
+                hash_version=hash_version,
             )
             if str(item["previous_hash"]) != previous_hash or record_hash != expected:
                 errors.append(f"{label}:hash")
@@ -735,6 +883,15 @@ def verify_evidence(evidence: dict[str, object]) -> dict[str, object]:
                 errors.append(f"{label}:duplicate_forecast")
             if score_id in score_ids:
                 errors.append(f"{label}:duplicate_id")
+            if hash_version == 2:
+                try:
+                    _validate_official_source(provenance.get("result_source"))
+                except ValueError:
+                    errors.append(f"{label}:result_source")
+                try:
+                    _validate_data_provenance(provenance.get("data"))
+                except ValueError:
+                    errors.append(f"{label}:data_provenance")
             draw = _draw_from_evidence(draw_payload)
             scored_at = datetime.fromisoformat(str(item["scored_at"]))
             target_date = date.fromisoformat(str(forecast["target_date"]))

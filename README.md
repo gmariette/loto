@@ -190,12 +190,15 @@ loto-lab ledger-info --ledger data/prospective.sqlite
 Le registre SQLite refuse la retroactivite, les doublons jeu/date, les mises a jour et les
 suppressions. Chaque prevision et chaque score prolongent une chaine SHA-256. Publier l'export JSON
 et le hash de tete dans Git avant le tirage fournit l'ancrage temporel externe; la base locale seule
-ne suffit pas, car son historique complet pourrait etre recree.
+ne suffit pas, car son historique complet pourrait etre recree. Depuis la version 0.9.0, la preuve
+contient aussi la taille et le SHA-256 de chaque fichier d'entree, plus une empreinte logique de tous
+les tirages effectivement charges.
 
 Apres actualisation des archives et de la base des tirages :
 
 ```bash
 loto-lab value-score data/loto.sqlite --ledger data/prospective.sqlite \
+  --result-source https://www.fdj.fr/jeux-de-tirage/loto/resultats/... \
   --export evidence/prospective-ledger.json
 loto-lab ledger-verify evidence/prospective-ledger.json
 ```
@@ -204,7 +207,8 @@ Le score utilise le bareme, les codes et le volume deduit du rang 9. `ledger-inf
 MAE, couverture et erreurs de decision que sur ces previsions figees. Le bundle autonome contient
 les previsions, les tirages, les scores et les deux chaines; `ledger-verify` recalcule aussi chaque
 metrique depuis le bareme sans acceder a SQLite. Un score est refuse avant 20 h 15, heure de Paris,
-le jour cible. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
+le jour cible. La source du resultat doit etre une URL HTTPS du domaine FDJ et fait partie du hash
+du score. Le premier ancrage public est documente dans [PROSPECTIVE.md](PROSPECTIVE.md).
 
 Generer dix grilles distinctes :
 
