@@ -52,3 +52,9 @@ anti-partage. Le modele ML n'a produit aucune hierarchie: toutes ses probabilite
 exactement `5/49`; ses numeros sont donc un repli pseudo-aleatoire reproductible. Cette echeance sert
 uniquement a tester le protocole de publication et de scoring, pas a qualifier le modele. Empreinte
 du fichier avant tirage : `5063a19ea0879a0c3c4dcb71f4d10d340e4b04932ac76e4fdbe95e8c248edd38`.
+
+La [qualification Top-5 v0.14](evidence/ranking-2026-08-01-v0.14.json), publiee a 17 h 28,
+selectionne la logistique comme meilleur challenger brut mais constate une retraction finale
+entierement uniforme et aucune qualification. Avec la meme graine, elle conserve exactement la
+grille initiale au lieu d'en choisir une seconde apres modification du protocole.
+Empreinte : `69910a617dec8029c088d504f2959f222947398928aeb8e83adbc96eaaeca428`.
