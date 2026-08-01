@@ -4,10 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loto-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Laboratoire reproductible d'analyse statistique du Loto FDJ"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+]
 license = { text = "MIT" }
 authors = [{ name = "Geoffrey Mariette" }]
 keywords = ["loto", "probability", "statistics", "backtesting"]

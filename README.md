@@ -4,7 +4,7 @@ Laboratoire Python reproductible pour tester si l'historique Loto, Super Loto et
 de la FDJ contient un signal
 predictif exploitable. Le projet calcule les probabilites exactes, audite l'uniformite des
 tirages, compare plusieurs heuristiques au hasard par backtest chronologique, simule une
-bankroll et genere des grilles diversifiees.
+bankroll, execute une validation ML imbriquee et genere des grilles diversifiees.
 
 ## Conclusion honnete
 
@@ -44,7 +44,7 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
-Le coeur n'a aucune dependance externe. Le format XLSX est optionnel :
+Le coeur statistique utilise NumPy et scikit-learn. Le format XLSX est optionnel :
 
 ```bash
 python -m pip install -e '.[xlsx]'
@@ -92,6 +92,44 @@ Une valeur `mean_delta` negative indique un score de Brier meilleur que l'unifor
 devient interessante que si elle est stable sur une periode future et statistiquement nette apres
 correction des essais multiples.
 
+### Validation ML
+
+Executer les modeles bayesien, logistique et gradient boosting :
+
+```bash
+loto-lab ml-backtest data/loto.sqlite \
+  --min-history 50 --min-train 500 --folds 3 --simulations 2000 \
+  --output reports/ml-backtest.json
+```
+
+Le protocole utilise une validation temporelle imbriquee : chaque fold externe mesure la
+generalisation et une fenetre interne choisit les hyperparametres. Les variables incluent les
+frequences sur 10/50/200 tirages, le retard, les paires avec la date precedente, le jour, le type
+de jeu, la tendance temporelle et un effet regulier par numero. Les probabilites sont reprojetees
+pour que leur somme soit exactement 5.
+
+Demander une prediction avec abstention obligatoire :
+
+```bash
+loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
+```
+
+Le programme ne renvoie des numeros que si la borne haute a 95 % du delta Brier est negative et
+si le test de permutation reste significatif apres correction de Holm. `--force` existe pour les
+experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
+
+### Esperance monetaire
+
+Evaluer un jackpot annonce a partir des rapports historiques :
+
+```bash
+loto-lab value data/loto.sqlite --game loto --jackpot 10000000 --co-winners 0
+```
+
+La decision vaut `eligible` seulement si la borne basse bootstrap de l'esperance depasse le prix
+de la grille. Le calcul ne connait ni le nombre futur de codes participants ni les co-gagnants
+reels; ces limites sont incluses dans la sortie.
+
 Generer dix grilles distinctes :
 
 ```bash
@@ -128,6 +166,7 @@ Sources officielles consultees :
 
 L'[analyse de faisabilite](ANALYSE.md) decrit les hypotheses et les seuils de decision. Les
 [resultats reproductibles](RESULTATS.md) donnent le verdict obtenu sur l'ensemble des archives.
+La [model card](MODEL_CARD.md) documente les variables, usages autorises et limites du ML.
 
 ## Jeu responsable
 

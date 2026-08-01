@@ -114,3 +114,33 @@ base SQLite normalisee avec quatre tables :
 
 La contrainte d'unicite rend l'import idempotent. La base n'est pas publiee dans Git : elle est
 reconstruite depuis les archives FDJ afin de rester actualisable et verifiable.
+
+## 8. Couche ML
+
+Le modele ML ne recoit jamais le resultat a predire dans ses variables. Pour chaque date, les
+variables sont construites avant que tous les tirages de cette date soient ajoutes a l'etat :
+
+- frequences cumulatives et fenetres de 10, 50 et 200 tirages ;
+- temps ecoule depuis la derniere apparition ;
+- presence lors de la date precedente ;
+- affinite historique avec les numeros de la date precedente ;
+- jour de semaine, annee et type Loto/Super Loto/Grand Loto ;
+- effet propre a chacun des 49 numeros.
+
+Trois familles sont comparees : posterior bayesien regularise, regression logistique penalisee et
+gradient boosting avec regularisation L2. La selection des hyperparametres est effectuee dans une
+fenetre temporelle interne; seul le fold externe sert a annoncer la performance.
+
+Les criteres de qualification sont cumulatifs : delta Brier moyen negatif, borne haute bootstrap
+a 95 % negative et test de permutation corrige par Holm inferieur a 5 %. Sans cela, l'API renvoie
+`abstention`. Cette regle empeche de transformer le meilleur modele d'un groupe de modeles tous
+mauvais en faux pronostic.
+
+## 9. Valeur monetaire
+
+Le moteur de valeur utilise les tirages possedant les neuf rangs modernes. Il combine les
+probabilites exactes avec les rapports medians des rangs 2 a 9 et le jackpot annonce, ajuste par
+un nombre attendu de co-gagnants. Un bootstrap sur les tirages historiques fournit un intervalle
+d'incertitude. La decision reste `no_bet` tant que sa borne basse ne couvre pas le prix de la
+grille. Les codes gagnants et la popularite reelle des combinaisons ne sont pas observables dans
+les archives, donc le moteur les signale explicitement comme limites.

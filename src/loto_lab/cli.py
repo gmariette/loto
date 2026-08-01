@@ -4,6 +4,7 @@ import argparse
 import json
 from collections import Counter
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 
 from .data import (
@@ -15,6 +16,7 @@ from .data import (
 )
 from .database import build_database, database_info
 from .domain import DEFAULT_RULES, LotteryRules
+from .ml import nested_ml_backtest, predict_next_draw
 from .models import SmoothedFrequencyPredictor, standard_backtests
 from .probability import (
     expected_budget,
@@ -25,6 +27,7 @@ from .probability import (
 from .simulation import load_payouts, simulate_bankroll
 from .stats import chance_uniformity, lag_overlap, main_uniformity, pair_frequency_outliers
 from .strategy import anti_crowd_score, generate_tickets
+from .value import estimate_value
 
 
 def _print_json(value: object) -> None:
@@ -103,6 +106,66 @@ def command_analyze_legacy(args: argparse.Namespace) -> None:
 def command_backtest(args: argparse.Namespace) -> None:
     draws = load_draws_many(args.data)
     _print_json([result.to_dict() for result in standard_backtests(draws, args.min_train)])
+
+
+def command_ml_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    results = nested_ml_backtest(
+        draws,
+        min_history=args.min_history,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        seed=args.seed,
+    )
+    payload = {
+        "results": [result.to_dict() for result in results],
+        "decision": (
+            "model_available" if any(result.qualified for result in results) else "abstention"
+        ),
+    }
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+    _print_json(payload)
+
+
+def command_ml_predict(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    results = nested_ml_backtest(
+        draws,
+        min_history=args.min_history,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        seed=args.seed,
+    )
+    _print_json(
+        predict_next_draw(
+            draws,
+            results,
+            date.fromisoformat(args.date),
+            game=args.game,
+            force=args.force,
+            seed=args.seed,
+        )
+    )
+
+
+def command_value(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    _print_json(
+        estimate_value(
+            draws,
+            jackpot=args.jackpot,
+            game=args.game,
+            expected_co_winners=args.co_winners,
+            bootstrap_simulations=args.simulations,
+            seed=args.seed,
+        ).to_dict()
+    )
 
 
 def command_generate(args: argparse.Namespace) -> None:
@@ -195,6 +258,47 @@ def build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("data", type=Path, nargs="+")
     backtest.add_argument("--min-train", type=int, default=200)
     backtest.set_defaults(handler=command_backtest)
+
+    ml_backtest = subparsers.add_parser(
+        "ml-backtest", help="Validation temporelle imbriquee des modeles ML"
+    )
+    ml_backtest.add_argument("data", type=Path, nargs="+")
+    ml_backtest.add_argument("--min-history", type=int, default=50)
+    ml_backtest.add_argument("--min-train", type=int, default=500)
+    ml_backtest.add_argument("--folds", type=int, default=3)
+    ml_backtest.add_argument("--simulations", type=int, default=2_000)
+    ml_backtest.add_argument("--seed", type=int, default=0)
+    ml_backtest.add_argument("--output", type=Path)
+    ml_backtest.set_defaults(handler=command_ml_backtest)
+
+    ml_predict = subparsers.add_parser(
+        "ml-predict", help="Predire uniquement si un modele est qualifie"
+    )
+    ml_predict.add_argument("data", type=Path, nargs="+")
+    ml_predict.add_argument("--date", required=True)
+    ml_predict.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    ml_predict.add_argument("--min-history", type=int, default=50)
+    ml_predict.add_argument("--min-train", type=int, default=500)
+    ml_predict.add_argument("--folds", type=int, default=3)
+    ml_predict.add_argument("--simulations", type=int, default=2_000)
+    ml_predict.add_argument("--seed", type=int, default=0)
+    ml_predict.add_argument("--force", action="store_true")
+    ml_predict.set_defaults(handler=command_ml_predict)
+
+    value = subparsers.add_parser(
+        "value", help="Estimer l'esperance monetaire d'un jackpot annonce"
+    )
+    value.add_argument("data", type=Path, nargs="+")
+    value.add_argument("--jackpot", type=float, required=True)
+    value.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    value.add_argument("--co-winners", type=float, default=0.0)
+    value.add_argument("--simulations", type=int, default=2_000)
+    value.add_argument("--seed", type=int, default=0)
+    value.set_defaults(handler=command_value)
 
     generate = subparsers.add_parser("generate", help="Generer des grilles distinctes")
     generate.add_argument("--count", type=int, default=5)

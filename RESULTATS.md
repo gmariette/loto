@@ -33,6 +33,30 @@ Un delta positif est moins bon. Les trois modeles historiques sont donc signific
 bien calibres que la probabilite uniforme `5/49`. Le leger surplus de Top-5 du premier modele ne
 compense pas ses probabilites moins bien calibrees et n'implique aucun avantage monetaire.
 
+## Validation ML imbriquee
+
+La version 0.2 ajoute 63 variables, une selection interne d'hyperparametres, trois folds externes,
+2 000 bootstraps et permutations, puis une correction de Holm entre modeles. L'evaluation porte
+sur 2 309 tirages jamais utilises pour ajuster le fold correspondant.
+
+| Modele | Delta Brier | IC 95 % du delta | Log-loss | Hits Top-5 | Qualifie |
+|---|---:|---:|---:|---:|---:|
+| Bayesien, prior 1000 | +0,0000326 | [+0,0000175 ; +0,0000467] | 0,32972 | 0,5193 | non |
+| Logistique, C selectionne | +0,0001913 | [+0,0001403 ; +0,0002410] | 0,33062 | 0,5106 | non |
+| Gradient boosting | +0,0000240 | [+0,0000091 ; +0,0000389] | 0,32968 | 0,5110 | non |
+
+La log-loss uniforme vaut `0,32954`. Tous les intervalles sont strictement positifs : les modeles
+ML sont moins bons que l'uniforme, pas seulement non concluants. La commande `ml-predict` renvoie
+donc `abstention`. En mode force, la meilleure variante n'ecarte les probabilites marginales que
+d'environ 10,2 % a 10,8 %, ce qui illustre l'absence de signal fort.
+
+## Esperance monetaire
+
+Sur 1 471 tirages Loto possedant les neuf rangs modernes, un jackpot annonce de 10 M EUR et zero
+co-gagnant suppose donne une esperance estimee de `1,32 EUR` pour `2,20 EUR` mises, soit un ROI de
+`59,8 %`. Le seuil ponctuel approche `26,86 M EUR`, avant modelisation des codes participants,
+du partage reel du jackpot et des variations futures de rapports. La decision reste `no_bet`.
+
 ## Regime historique : 6/49 + complementaire
 
 Echantillon separe : 2 707 tirages du 3 janvier 1996 au 4 octobre 2008, dont 2 664 Loto et
