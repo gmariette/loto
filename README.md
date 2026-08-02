@@ -197,6 +197,20 @@ pas la probabilite du tirage et ne rend pas l'esperance globale positive; elle v
 reduire un partage eventuel des gros rangs. La qualification est historique et doit encore etre
 confirmee sur des tirages futurs pre-enregistres.
 
+Diagnostiquer la preference des joueurs pour le numero Chance sans l'utiliser automatiquement dans
+une grille :
+
+```bash
+loto-lab chance-popularity-backtest data/loto.sqlite \
+  --game loto --min-train 500 --folds 3 --simulations 2000 --seed 20260803
+```
+
+Le diagnostic compare une estimation beta-binomial de la part du Chance tire aux gagnants cumules
+des rangs 1 et 2. Il publie les facteurs par numero, leur evolution entre la premiere et la
+seconde moitie de l'historique, un intervalle par blocs et une p-value. Tant que la borne haute ne
+reste pas negative, le facteur Chance ne modifie pas la grille; sur l'archive actuelle le test
+reste non qualifie (`delta -0,00888`, IC `[-0,02199 ; 0,00632]`, `p=0,099`).
+
 Figer les coefficients avant un tirage, les noter apres publication des rapports puis verifier la
 preuve autonome :
 

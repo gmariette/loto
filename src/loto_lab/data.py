@@ -385,7 +385,7 @@ def _deduplicate_and_sort(draws: Iterable[Draw]) -> list[Draw]:
 def download_latest_archive(destination: str | Path, url: str = LATEST_ARCHIVE_URL) -> Path:
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.22.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "loto-lab/0.23.0"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
             content = response.read()
