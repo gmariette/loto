@@ -17,7 +17,11 @@ from .data import (
 from .database import build_database, database_info
 from .domain import DEFAULT_RULES, Draw, LotteryRules
 from .ml import DEFAULT_MODELS, nested_ml_backtest, predict_next_draw
-from .model_identity import build_model_specification, build_number_model_specification
+from .model_identity import (
+    build_model_specification,
+    build_number_model_specification,
+    build_popularity_model_specification,
+)
 from .models import SmoothedFrequencyPredictor, standard_backtests
 from .number_prospective import (
     export_number_evidence,
@@ -31,6 +35,13 @@ from .popularity import (
     PopularityPredictor,
     fit_popularity_predictor,
     popularity_backtest,
+)
+from .popularity_prospective import (
+    export_popularity_evidence,
+    record_popularity_snapshot,
+    score_pending_popularity_snapshots,
+    verify_popularity_evidence,
+    verify_popularity_ledger,
 )
 from .probability import (
     expected_budget,
@@ -173,6 +184,95 @@ def command_popularity_backtest(args: argparse.Namespace) -> None:
         seed=args.seed,
     )
     _print_json(result.to_dict())
+
+
+def command_popularity_record(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    target_date = date.fromisoformat(args.date)
+    if any(draw.game == args.game and draw.draw_date == target_date for draw in draws):
+        raise SystemExit("Le tirage cible est deja present: enregistrement retrospectif refuse")
+    result = popularity_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
+    )
+    if not result.qualified:
+        raise SystemExit("Le modele de popularite ne bat pas sa reference historique")
+    predictor = fit_popularity_predictor(
+        draws,
+        result,
+        bootstrap_models=args.bootstrap_models,
+        uncertainty_quantile=args.uncertainty_quantile,
+        seed=args.seed,
+    )
+    specification = build_popularity_model_specification(
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
+        bootstrap_models=args.bootstrap_models,
+        uncertainty_quantile=args.uncertainty_quantile,
+    )
+    record = record_popularity_snapshot(
+        args.ledger,
+        predictor,
+        draws,
+        target_date,
+        model_specification=specification,
+        provenance={"data": build_data_provenance(args.data, draws)},
+    )
+    payload: dict[str, object] = {
+        "record": record,
+        "ledger": verify_popularity_ledger(args.ledger),
+    }
+    if args.export:
+        write_json_atomic(args.export, export_popularity_evidence(args.ledger))
+        payload["evidence_export"] = str(args.export)
+    _print_json(payload)
+
+
+def command_popularity_score(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    result = score_pending_popularity_snapshots(
+        args.ledger,
+        draws,
+        provenance={
+            "result_source": args.result_source,
+            "data": build_data_provenance(args.data, draws),
+        },
+    )
+    payload: dict[str, object] = {
+        **result,
+        "ledger": verify_popularity_ledger(args.ledger),
+    }
+    if args.export:
+        write_json_atomic(args.export, export_popularity_evidence(args.ledger))
+        payload["evidence_export"] = str(args.export)
+    _print_json(payload)
+
+
+def command_popularity_ledger_info(args: argparse.Namespace) -> None:
+    _print_json(verify_popularity_ledger(args.ledger))
+
+
+def command_popularity_ledger_export(args: argparse.Namespace) -> None:
+    evidence = export_popularity_evidence(args.ledger)
+    write_json_atomic(args.output, evidence)
+    _print_json({"output": str(args.output), "ledger": evidence["ledger"]})
+
+
+def command_popularity_ledger_verify(args: argparse.Namespace) -> None:
+    try:
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Preuve de popularite illisible: {error}") from error
+    _print_json(verify_popularity_evidence(evidence))
 
 
 def _value_aware_predictor(
@@ -577,6 +677,61 @@ def build_parser() -> argparse.ArgumentParser:
     popularity.add_argument("--block-size", type=int, default=12)
     popularity.add_argument("--seed", type=int, default=0)
     popularity.set_defaults(handler=command_popularity_backtest)
+
+    popularity_record = subparsers.add_parser(
+        "popularity-record", help="Figer un modele de popularite avant le tirage"
+    )
+    popularity_record.add_argument("data", type=Path, nargs="+")
+    popularity_record.add_argument("--date", required=True)
+    popularity_record.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    popularity_record.add_argument("--min-train", type=int, default=500)
+    popularity_record.add_argument("--folds", type=int, default=3)
+    popularity_record.add_argument("--simulations", type=int, default=2_000)
+    popularity_record.add_argument("--block-size", type=int, default=12)
+    popularity_record.add_argument("--seed", type=int, default=0)
+    popularity_record.add_argument("--bootstrap-models", type=int, default=100)
+    popularity_record.add_argument("--uncertainty-quantile", type=float, default=0.9)
+    popularity_record.add_argument(
+        "--ledger", type=Path, default=Path("data/popularity-prospective.sqlite")
+    )
+    popularity_record.add_argument("--export", type=Path)
+    popularity_record.set_defaults(handler=command_popularity_record)
+
+    popularity_score = subparsers.add_parser(
+        "popularity-score", help="Noter les modeles de popularite arrives a echeance"
+    )
+    popularity_score.add_argument("data", type=Path, nargs="+")
+    popularity_score.add_argument(
+        "--ledger", type=Path, default=Path("data/popularity-prospective.sqlite")
+    )
+    popularity_score.add_argument("--result-source", required=True)
+    popularity_score.add_argument("--export", type=Path)
+    popularity_score.set_defaults(handler=command_popularity_score)
+
+    popularity_info = subparsers.add_parser(
+        "popularity-ledger-info", help="Verifier le registre prospectif de popularite"
+    )
+    popularity_info.add_argument(
+        "--ledger", type=Path, default=Path("data/popularity-prospective.sqlite")
+    )
+    popularity_info.set_defaults(handler=command_popularity_ledger_info)
+
+    popularity_export = subparsers.add_parser(
+        "popularity-ledger-export", help="Exporter les preuves de popularite"
+    )
+    popularity_export.add_argument(
+        "--ledger", type=Path, default=Path("data/popularity-prospective.sqlite")
+    )
+    popularity_export.add_argument("--output", type=Path, required=True)
+    popularity_export.set_defaults(handler=command_popularity_ledger_export)
+
+    popularity_verify = subparsers.add_parser(
+        "popularity-ledger-verify", help="Verifier un export de popularite"
+    )
+    popularity_verify.add_argument("evidence", type=Path)
+    popularity_verify.set_defaults(handler=command_popularity_ledger_verify)
 
     ml_predict = subparsers.add_parser(
         "ml-predict", help="Predire uniquement si un modele est qualifie"

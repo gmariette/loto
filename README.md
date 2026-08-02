@@ -194,6 +194,27 @@ pas la probabilite du tirage et ne rend pas l'esperance globale positive; elle v
 reduire un partage eventuel des gros rangs. La qualification est historique et doit encore etre
 confirmee sur des tirages futurs pre-enregistres.
 
+Figer les coefficients avant un tirage, les noter apres publication des rapports puis verifier la
+preuve autonome :
+
+```bash
+loto-lab popularity-record data/loto.sqlite --date 2026-08-03 --game loto \
+  --seed 20260803 --ledger data/popularity-prospective.sqlite \
+  --export evidence/popularity-prospective-ledger.json
+loto-lab popularity-score data/loto.sqlite \
+  --result-source https://www.fdj.fr/jeux-de-tirage/loto/resultats/... \
+  --export evidence/popularity-prospective-ledger.json
+loto-lab popularity-ledger-verify evidence/popularity-prospective-ledger.json
+```
+
+Le snapshot contient les coefficients bruts, les variables, la reference uniforme, le backtest,
+les empreintes du code, des dependances et des donnees. Chaque score recalcule le volume depuis le
+rang 9 et compare les deviances de Poisson sur la combinaison reellement sortie. Seuls les 100
+premiers scores d'une cohorte comptent. La cohorte `i` utilise le budget alpha
+`0,05 / (i * (i + 1))`; une borne haute du delta strictement negative et une permutation par blocs
+sous ce budget sont necessaires. Avant ces 100 observations, le statut reste
+`insufficient_data` et aucun avantage prospectif n'est revendique.
+
 ### Esperance monetaire
 
 Valider l'estimation du nombre de grilles jouees :

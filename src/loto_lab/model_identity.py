@@ -10,6 +10,8 @@ MODEL_SPECIFICATION_FORMAT = "loto-lab.value-model"
 MODEL_SPECIFICATION_VERSION = 1
 NUMBER_MODEL_SPECIFICATION_FORMAT = "loto-lab.number-model"
 NUMBER_MODEL_SPECIFICATION_VERSION = 1
+POPULARITY_MODEL_SPECIFICATION_FORMAT = "loto-lab.popularity-model"
+POPULARITY_MODEL_SPECIFICATION_VERSION = 1
 MODEL_SOURCE_FILES = (
     "domain.py",
     "participation.py",
@@ -21,6 +23,12 @@ NUMBER_MODEL_SOURCE_FILES = (
     "ml.py",
     "number_prospective.py",
     "popularity.py",
+    "probability.py",
+)
+POPULARITY_MODEL_SOURCE_FILES = (
+    "domain.py",
+    "popularity.py",
+    "popularity_prospective.py",
     "probability.py",
 )
 
@@ -121,6 +129,40 @@ def build_number_model_specification(
     return {**specification, "sha256": _digest(specification)}
 
 
+def build_popularity_model_specification(
+    *,
+    game: str,
+    min_train: int,
+    outer_folds: int,
+    simulations: int,
+    block_size: int,
+    seed: int,
+    bootstrap_models: int,
+    uncertainty_quantile: float,
+) -> dict[str, object]:
+    specification: dict[str, object] = {
+        "format": POPULARITY_MODEL_SPECIFICATION_FORMAT,
+        "specification_version": POPULARITY_MODEL_SPECIFICATION_VERSION,
+        "source_files": _source_fingerprints(POPULARITY_MODEL_SOURCE_FILES),
+        "runtime": {
+            "python": platform.python_version(),
+            "numpy": version("numpy"),
+            "scikit-learn": version("scikit-learn"),
+        },
+        "parameters": {
+            "game": game,
+            "min_train": min_train,
+            "outer_folds": outer_folds,
+            "simulations": simulations,
+            "block_size": block_size,
+            "seed": seed,
+            "bootstrap_models": bootstrap_models,
+            "uncertainty_quantile": uncertainty_quantile,
+        },
+    }
+    return {**specification, "sha256": _digest(specification)}
+
+
 def validate_model_specification(value: object) -> str:
     return _validate_model_specification(
         value, MODEL_SPECIFICATION_FORMAT, MODEL_SPECIFICATION_VERSION
@@ -130,6 +172,14 @@ def validate_model_specification(value: object) -> str:
 def validate_number_model_specification(value: object) -> str:
     return _validate_model_specification(
         value, NUMBER_MODEL_SPECIFICATION_FORMAT, NUMBER_MODEL_SPECIFICATION_VERSION
+    )
+
+
+def validate_popularity_model_specification(value: object) -> str:
+    return _validate_model_specification(
+        value,
+        POPULARITY_MODEL_SPECIFICATION_FORMAT,
+        POPULARITY_MODEL_SPECIFICATION_VERSION,
     )
 
 
