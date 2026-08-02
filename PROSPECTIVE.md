@@ -172,6 +172,12 @@ ponctuelle vaut `0,24303` et sa borne conservatrice `0,29434`, contre `0,81592` 
 Evaluee avec le meme modele, la grille v0.20 aurait une borne `0,30876`; v0.22 la reduit de
 `4,67 %` tout en sacrifiant moins de score marginal. Le numero Chance reste `3` car cette cible
 n'apporte aucune validation suffisante pour le remplacer.
+
+La version 0.23 ajoute un diagnostic beta-binomial du partage du numero Chance, sans ouvrir de
+nouvelle grille ni depenser le budget d'une cohorte de numeros. Sur 1 749 tirages externes, le
+delta de deviance vaut `-0,00888`, mais l'IC temporel `[-0,02199 ; 0,00632]` et la p-value `0,099`
+laissent le statut `qualified=false`. Les facteurs bruts des numeros 5 et 7 sont plus eleves,
+mais leur instabilite ne justifie pas encore de les eviter.
 Cohorte de foule : `d16157d6de3d4cf94beb79fc07049eab0d64907eb964e3721a4ec4e7d883e3d4`.
 Tete de foule : `358b4a959fd8f694f030fdcfb79f73e8259025a20841ca5a39ba99c73de7fe73`.
 Cohorte de numeros : `1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb`.

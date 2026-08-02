@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
+from .chance_popularity import chance_popularity_backtest
 from .data import (
     download_all_archives,
     download_latest_archive,
@@ -183,6 +184,19 @@ def command_popularity_backtest(args: argparse.Namespace) -> None:
         block_size=args.block_size,
         seed=args.seed,
         target=args.target,
+    )
+    _print_json(result.to_dict())
+
+
+def command_chance_popularity_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    result = chance_popularity_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        seed=args.seed,
     )
     _print_json(result.to_dict())
 
@@ -685,6 +699,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--target", choices=("jackpot", "main_combination"), default="jackpot"
     )
     popularity.set_defaults(handler=command_popularity_backtest)
+
+    chance_popularity = subparsers.add_parser(
+        "chance-popularity-backtest",
+        help="Diagnostiquer la popularite des numeros Chance sans la selectionner",
+    )
+    chance_popularity.add_argument("data", type=Path, nargs="+")
+    chance_popularity.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    chance_popularity.add_argument("--min-train", type=int, default=500)
+    chance_popularity.add_argument("--folds", type=int, default=3)
+    chance_popularity.add_argument("--simulations", type=int, default=2_000)
+    chance_popularity.add_argument("--seed", type=int, default=0)
+    chance_popularity.set_defaults(handler=command_chance_popularity_backtest)
 
     popularity_record = subparsers.add_parser(
         "popularity-record", help="Figer un modele de popularite avant le tirage"
