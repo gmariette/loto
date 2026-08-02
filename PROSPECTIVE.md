@@ -127,3 +127,19 @@ gain et n'augmente pas la probabilite de tirage. La cohorte 4,
 alpha de `0,0025`. Tete append-only :
 `f440b7e043fadcf0e1379299bcd424d93a0617098c5b1d9cf1ae9578e5ee3200`. Empreinte du bundle :
 `feb976688a8c238b4f3546ab2b7ad51d98bba1ca608b71e0c6dd6eb813bf0659`.
+
+La version 0.20 remplace l'optimisation ponctuelle de popularite par une borne conservatrice. Cent
+modeles de Poisson sont reajustes sur des echantillons en blocs temporels; chaque combinaison est
+classee par le quantile 90 % de son multiplicateur, normalise par la popularite moyenne de chaque
+echantillon. Les parametres `100`, `0,90`, la taille de bloc et la graine font partie de l'identite
+scientifique et le bootstrap est exactement reproductible.
+
+La grille sans mise figee pour le 3 aout est `3 42 43 44 45`, Chance `3`. Son score marginal
+attendu vaut `0,52086`, soit une perte de `0,00456` face au Top-5 pur. Son multiplicateur ponctuel
+vaut `0,46537` et sa borne conservatrice `0,62204`, contre `0,90605` pour la grille Top-5. La grille
+v0.19 aurait une borne `0,63409` avec le meme bootstrap; v0.20 reduit donc le risque d'estimation
+qui pilote la selection, sans pretendre augmenter la probabilite de sortie. La cohorte 5,
+`67af5224bf5dd2a33799bec286e77a9bbe6728baca3284d2237b71ae44a0e212`, dispose d'un budget
+alpha de `0,0016667`. Tete append-only :
+`dac620853e531f4f69f595192feab7901ca08829a6c8c0e6e791b6c6e035fe5a`. Empreinte du bundle :
+`2a2d41a1468b3043ff0cf4d80de70911f4a3f4c19069b254118b7c272848da7d`.

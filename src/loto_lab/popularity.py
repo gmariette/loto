@@ -61,6 +61,9 @@ class PopularityPredictor:
     observations: int
     baseline_multiplier: float
     validation: PopularityBacktestResult
+    bootstrap_intercepts: np.ndarray
+    bootstrap_coefficients: np.ndarray
+    uncertainty_quantile: float
 
     def multipliers(self, mains: np.ndarray, chances: np.ndarray) -> np.ndarray:
         features = _feature_matrix(mains, chances)
@@ -71,6 +74,19 @@ class PopularityPredictor:
         chances = np.asarray([ticket.chance], dtype=int)
         return float(self.multipliers(mains, chances)[0])
 
+    def conservative_multipliers(
+        self, mains: np.ndarray, chances: np.ndarray
+    ) -> np.ndarray:
+        features = _feature_matrix(mains, chances)
+        log_relative = (
+            self.bootstrap_intercepts[np.newaxis, :]
+            + features @ self.bootstrap_coefficients.T
+        )
+        relative = np.exp(log_relative)
+        return self.baseline_multiplier * np.quantile(
+            relative, self.uncertainty_quantile, axis=1
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ValueAwareSelection:
@@ -80,7 +96,11 @@ class ValueAwareSelection:
     top_expected_main_hits: float
     expected_hit_loss: float
     predicted_popularity_multiplier: float
+    conservative_popularity_multiplier: float
+    top_conservative_popularity_multiplier: float
     baseline_popularity_multiplier: float
+    uncertainty_quantile: float
+    bootstrap_models: int
     combinations_evaluated: int
     feasible_combinations: int
 
@@ -247,6 +267,8 @@ def popularity_backtest(
     if len(observations) <= min_train:
         raise ValueError("Historique insuffisant pour le modele de popularite")
     dates, features, actual, exposure = _arrays(observations)
+    if actual.sum() <= 0:
+        raise ValueError("Aucun gagnant du jackpot pour ajuster la popularite")
     eligible_dates = np.unique(dates[min_train:])
     folds = [fold for fold in np.array_split(eligible_dates, outer_folds) if len(fold)]
     model_scores = []
@@ -304,14 +326,50 @@ def popularity_backtest(
 
 
 def fit_popularity_predictor(
-    draws: list[Draw], result: PopularityBacktestResult
+    draws: list[Draw],
+    result: PopularityBacktestResult,
+    bootstrap_models: int = 100,
+    uncertainty_quantile: float = 0.9,
+    seed: int = 0,
 ) -> PopularityPredictor:
+    if bootstrap_models < 20 or not 0.5 <= uncertainty_quantile < 1:
+        raise ValueError(
+            "Il faut au moins 20 modeles bootstrap et un quantile dans [0,5; 1["
+        )
     observations = popularity_observations(draws, result.game)
     _, features, actual, exposure = _arrays(observations)
     indices = np.arange(len(observations))
     scaler, model = _fit(
         features, actual, exposure, indices, result.final_alpha
     )
+    block_size = min(result.temporal_block_size, len(observations))
+    blocks_needed = ceil(len(observations) / block_size)
+    rng = np.random.default_rng(seed)
+    bootstrap_intercepts = []
+    bootstrap_coefficients = []
+    while len(bootstrap_intercepts) < bootstrap_models:
+        starts = rng.integers(
+            0, len(observations) - block_size + 1, size=blocks_needed
+        )
+        sample = np.concatenate(
+            [np.arange(start, start + block_size) for start in starts]
+        )[: len(observations)]
+        if actual[sample].sum() <= 0:
+            continue
+        sample_scaler, sample_model = _fit(
+            features, actual, exposure, sample, result.final_alpha
+        )
+        sample_baseline = actual[sample].sum() / exposure[sample].sum()
+        raw_coefficients = sample_model.coef_ / sample_scaler.scale_
+        raw_intercept = (
+            sample_model.intercept_
+            - np.dot(
+                sample_model.coef_, sample_scaler.mean_ / sample_scaler.scale_
+            )
+            - np.log(sample_baseline)
+        )
+        bootstrap_intercepts.append(float(raw_intercept))
+        bootstrap_coefficients.append(raw_coefficients)
     return PopularityPredictor(
         scaler=scaler,
         model=model,
@@ -319,6 +377,9 @@ def fit_popularity_predictor(
         observations=len(observations),
         baseline_multiplier=float(actual.sum() / exposure.sum()),
         validation=result,
+        bootstrap_intercepts=np.asarray(bootstrap_intercepts),
+        bootstrap_coefficients=np.asarray(bootstrap_coefficients),
+        uncertainty_quantile=uncertainty_quantile,
     )
 
 
@@ -359,7 +420,9 @@ def optimize_value_aware_ticket(
         candidate_scores = scores[mask]
         feasible += len(candidates)
         candidate_chances = np.full(len(candidates), chance, dtype=int)
-        minimums = predictor.multipliers(candidates, candidate_chances)
+        conservative = predictor.conservative_multipliers(
+            candidates, candidate_chances
+        )
         order = np.lexsort(
             (
                 candidate_chances,
@@ -369,12 +432,12 @@ def optimize_value_aware_ticket(
                 candidates[:, 1],
                 candidates[:, 0],
                 -candidate_scores,
-                minimums,
+                conservative,
             )
         )
         position = int(order[0])
         key = (
-            float(minimums[position]),
+            float(conservative[position]),
             -float(candidate_scores[position]),
             tuple(int(value) for value in candidates[position]),
             int(candidate_chances[position]),
@@ -386,14 +449,23 @@ def optimize_value_aware_ticket(
         raise RuntimeError("Aucune combinaison admissible trouvee")
     selected_score = -best[1]
     ticket = Ticket(best[2], best[3])
+    top_ticket = Ticket(top_main, chance)
     return ValueAwareSelection(
         ticket=ticket,
-        top_probability_ticket=Ticket(top_main, chance),
+        top_probability_ticket=top_ticket,
         expected_main_hits=selected_score,
         top_expected_main_hits=top_score,
         expected_hit_loss=top_score - selected_score,
-        predicted_popularity_multiplier=best[0],
+        predicted_popularity_multiplier=predictor.multiplier(ticket),
+        conservative_popularity_multiplier=best[0],
+        top_conservative_popularity_multiplier=float(
+            predictor.conservative_multipliers(
+                np.asarray([top_ticket.main]), np.asarray([top_ticket.chance])
+            )[0]
+        ),
         baseline_popularity_multiplier=predictor.baseline_multiplier,
+        uncertainty_quantile=predictor.uncertainty_quantile,
+        bootstrap_models=len(predictor.bootstrap_intercepts),
         combinations_evaluated=evaluated,
         feasible_combinations=feasible,
     )

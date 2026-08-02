@@ -53,7 +53,9 @@ class PopularityTests(unittest.TestCase):
         )
         self.assertEqual(result.test_observations, 140)
         self.assertTrue(np.isfinite(result.deviance_delta))
-        predictor = fit_popularity_predictor(draws, result)
+        predictor = fit_popularity_predictor(
+            draws, result, bootstrap_models=20, seed=12
+        )
         probabilities = np.linspace(0.01, 0.49, 49)
         selection = optimize_value_aware_ticket(
             probabilities,
@@ -64,6 +66,14 @@ class PopularityTests(unittest.TestCase):
         self.assertEqual(selection.ticket.main, (45, 46, 47, 48, 49))
         self.assertEqual(selection.ticket.chance, 3)
         self.assertAlmostEqual(selection.expected_hit_loss, 0.0)
+        self.assertTrue(np.isfinite(selection.conservative_popularity_multiplier))
+        self.assertEqual(selection.bootstrap_models, 20)
+        repeated = fit_popularity_predictor(
+            draws, result, bootstrap_models=20, seed=12
+        )
+        np.testing.assert_allclose(
+            predictor.bootstrap_coefficients, repeated.bootstrap_coefficients
+        )
         self.assertEqual(selection.combinations_evaluated, 1_906_884)
 
     def test_optimizer_rejects_negative_loss_budget(self) -> None:
@@ -71,7 +81,9 @@ class PopularityTests(unittest.TestCase):
         result = popularity_backtest(
             draws, min_train=100, simulations=100, outer_folds=2
         )
-        predictor = fit_popularity_predictor(draws, result)
+        predictor = fit_popularity_predictor(
+            draws, result, bootstrap_models=20, seed=12
+        )
         with self.assertRaisesRegex(ValueError, "positifs"):
             optimize_value_aware_ticket(
                 np.full(49, 5 / 49), predictor, max_expected_hit_loss=-0.1

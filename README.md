@@ -182,14 +182,17 @@ populaire parmi celles qui respectent un budget explicite de perte de hits atten
 
 ```bash
 loto-lab ml-predict data/loto.sqlite --date 2026-08-03 --game loto \
-  --seed 20260803 --force --value-aware --max-expected-hit-loss 0.005
+  --seed 20260803 --force --value-aware --max-expected-hit-loss 0.005 \
+  --popularity-bootstrap-models 100 --popularity-uncertainty-quantile 0.9
 ```
 
 La sortie publie la grille Top-5 sans penalite, la grille retenue, les deux scores de hits attendus,
-la perte consentie, le multiplicateur de popularite predit et le backtest complet du modele de
-foule. Cette optimisation ne change pas la probabilite du tirage et ne rend pas l'esperance globale
-positive; elle vise uniquement a reduire un partage eventuel des gros rangs. La qualification est
-historique et doit encore etre confirmee sur des tirages futurs pre-enregistres.
+la perte consentie, le multiplicateur ponctuel, sa borne conservatrice et le backtest complet du
+modele de foule. La borne est le quantile demande de modeles reajustes sur des blocs temporels;
+l'optimiseur minimise cette borne plutot que l'estimation ponctuelle. Cette optimisation ne change
+pas la probabilite du tirage et ne rend pas l'esperance globale positive; elle vise uniquement a
+reduire un partage eventuel des gros rangs. La qualification est historique et doit encore etre
+confirmee sur des tirages futurs pre-enregistres.
 
 ### Esperance monetaire
 

@@ -91,6 +91,8 @@ def build_number_model_specification(
     value_aware: bool = False,
     max_expected_hit_loss: float = 0.005,
     popularity_block_size: int = 12,
+    popularity_bootstrap_models: int = 100,
+    popularity_uncertainty_quantile: float = 0.9,
 ) -> dict[str, object]:
     specification: dict[str, object] = {
         "format": NUMBER_MODEL_SPECIFICATION_FORMAT,
@@ -112,6 +114,8 @@ def build_number_model_specification(
             "value_aware": value_aware,
             "max_expected_hit_loss": max_expected_hit_loss,
             "popularity_block_size": popularity_block_size,
+            "popularity_bootstrap_models": popularity_bootstrap_models,
+            "popularity_uncertainty_quantile": popularity_uncertainty_quantile,
         },
     }
     return {**specification, "sha256": _digest(specification)}
