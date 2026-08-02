@@ -167,12 +167,15 @@ Valider si la structure d'une combinaison explique le nombre de gagnants du jack
 correction du volume de tickets estime par le rang 9 :
 
 ```bash
-loto-lab popularity-backtest data/loto.sqlite \
+loto-lab popularity-backtest data/loto.sqlite --target main_combination \
   --game loto --min-train 500 --folds 3 --simulations 2000 --block-size 12
 ```
 
-Le modele de Poisson utilise le volume comme exposition et compare sa deviance a une popularite
-uniforme calibree dans chaque fold. Ses variables structurelles sont limitees aux effets dont le
+Le modele `main_combination` additionne les gagnants des rangs 1 et 2 afin d'observer tous les
+tickets ayant les cinq numeros principaux; son exposition vaut le volume estime divise par
+`C(49,5)`. La cible historique `jackpot` reste disponible et utilise seulement le rang 1. Les deux
+hypotheses sont corrigees ensemble avant qualification. Le modele de Poisson compare sa deviance a
+une popularite uniforme calibree dans chaque fold. Ses variables structurelles sont limitees aux effets dont le
 signe reste stable dans les validations temporelles : nombres au-dessus de 31, grille entierement
 dans 1-31, paires consecutives, 7/13, somme et distance a la somme centrale. L'intervalle et la
 p-value utilisent des blocs temporels pour conserver l'autocorrelation des habitudes de jeu.
@@ -199,6 +202,7 @@ preuve autonome :
 
 ```bash
 loto-lab popularity-record data/loto.sqlite --date 2026-08-03 --game loto \
+  --target main_combination \
   --seed 20260803 --ledger data/popularity-prospective.sqlite \
   --export evidence/popularity-prospective-ledger.json
 loto-lab popularity-score data/loto.sqlite \
@@ -207,7 +211,7 @@ loto-lab popularity-score data/loto.sqlite \
 loto-lab popularity-ledger-verify evidence/popularity-prospective-ledger.json
 ```
 
-Le snapshot contient les coefficients bruts, les variables, la reference uniforme, le backtest,
+Le snapshot contient aussi la cible, les coefficients bruts, les variables, la reference uniforme, le backtest,
 les empreintes du code, des dependances et des donnees. Chaque score recalcule le volume depuis le
 rang 9 et compare les deviances de Poisson sur la combinaison reellement sortie. Seuls les 100
 premiers scores d'une cohorte comptent. La cohorte `i` utilise le budget alpha

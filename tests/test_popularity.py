@@ -27,6 +27,7 @@ def popularity_draws(count: int = 240) -> list[Draw]:
                 start + timedelta(days=index),
                 prizes=(
                     PrizeResult(1, jackpot_winners, 2_000_000.0),
+                    PrizeResult(2, 3 if jackpot_winners else 0, 100_000.0),
                     PrizeResult(9, 100_000, 2.2),
                 ),
             )
@@ -40,6 +41,28 @@ class PopularityTests(unittest.TestCase):
         self.assertEqual(len(observations), 3)
         self.assertGreater(observations[0].estimated_tickets, 0)
         self.assertGreater(observations[0].exposure, 0)
+
+    def test_main_combination_target_uses_ranks_one_and_two(self) -> None:
+        draws = popularity_draws()
+        jackpot = popularity_observations(draws, target="jackpot")
+        main = popularity_observations(draws, target="main_combination")
+        self.assertAlmostEqual(main[0].exposure, jackpot[0].exposure * 10)
+        self.assertEqual(
+            main[0].jackpot_winners,
+            jackpot[0].jackpot_winners + draws[0].prizes[1].winners,
+        )
+        result = popularity_backtest(
+            draws,
+            target="main_combination",
+            min_train=100,
+            outer_folds=2,
+            simulations=100,
+            block_size=6,
+            seed=12,
+        )
+        self.assertEqual(result.target, "main_combination")
+        self.assertEqual(result.adjusted_p_value, min(1.0, 2 * result.permutation_p_value))
+        self.assertTrue(result.qualified)
 
     def test_temporal_backtest_and_value_aware_constraint(self) -> None:
         draws = popularity_draws()

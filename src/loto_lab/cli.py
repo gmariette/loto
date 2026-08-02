@@ -182,6 +182,7 @@ def command_popularity_backtest(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         block_size=args.block_size,
         seed=args.seed,
+        target=args.target,
     )
     _print_json(result.to_dict())
 
@@ -199,6 +200,7 @@ def command_popularity_record(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         block_size=args.block_size,
         seed=args.seed,
+        target=args.target,
     )
     if not result.qualified:
         raise SystemExit("Le modele de popularite ne bat pas sa reference historique")
@@ -218,6 +220,7 @@ def command_popularity_record(args: argparse.Namespace) -> None:
         seed=args.seed,
         bootstrap_models=args.bootstrap_models,
         uncertainty_quantile=args.uncertainty_quantile,
+        target=args.target,
     )
     record = record_popularity_snapshot(
         args.ledger,
@@ -288,6 +291,7 @@ def _value_aware_predictor(
         simulations=args.simulations,
         block_size=args.popularity_block_size,
         seed=args.seed,
+        target=args.popularity_target,
     )
     if not result.qualified:
         raise SystemExit(
@@ -366,6 +370,7 @@ def command_ml_record(args: argparse.Namespace) -> None:
         popularity_block_size=args.popularity_block_size,
         popularity_bootstrap_models=args.popularity_bootstrap_models,
         popularity_uncertainty_quantile=args.popularity_uncertainty_quantile,
+        popularity_target=args.popularity_target,
     )
     record = record_number_forecast(
         args.ledger,
@@ -676,6 +681,9 @@ def build_parser() -> argparse.ArgumentParser:
     popularity.add_argument("--simulations", type=int, default=2_000)
     popularity.add_argument("--block-size", type=int, default=12)
     popularity.add_argument("--seed", type=int, default=0)
+    popularity.add_argument(
+        "--target", choices=("jackpot", "main_combination"), default="jackpot"
+    )
     popularity.set_defaults(handler=command_popularity_backtest)
 
     popularity_record = subparsers.add_parser(
@@ -691,6 +699,9 @@ def build_parser() -> argparse.ArgumentParser:
     popularity_record.add_argument("--simulations", type=int, default=2_000)
     popularity_record.add_argument("--block-size", type=int, default=12)
     popularity_record.add_argument("--seed", type=int, default=0)
+    popularity_record.add_argument(
+        "--target", choices=("jackpot", "main_combination"), default="jackpot"
+    )
     popularity_record.add_argument("--bootstrap-models", type=int, default=100)
     popularity_record.add_argument("--uncertainty-quantile", type=float, default=0.9)
     popularity_record.add_argument(
@@ -750,6 +761,11 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--value-aware", action="store_true")
     ml_predict.add_argument("--max-expected-hit-loss", type=float, default=0.005)
     ml_predict.add_argument("--popularity-block-size", type=int, default=12)
+    ml_predict.add_argument(
+        "--popularity-target",
+        choices=("jackpot", "main_combination"),
+        default="main_combination",
+    )
     ml_predict.add_argument("--popularity-bootstrap-models", type=int, default=100)
     ml_predict.add_argument(
         "--popularity-uncertainty-quantile", type=float, default=0.9
@@ -773,6 +789,11 @@ def build_parser() -> argparse.ArgumentParser:
     ml_record.add_argument("--value-aware", action="store_true")
     ml_record.add_argument("--max-expected-hit-loss", type=float, default=0.005)
     ml_record.add_argument("--popularity-block-size", type=int, default=12)
+    ml_record.add_argument(
+        "--popularity-target",
+        choices=("jackpot", "main_combination"),
+        default="main_combination",
+    )
     ml_record.add_argument("--popularity-bootstrap-models", type=int, default=100)
     ml_record.add_argument(
         "--popularity-uncertainty-quantile", type=float, default=0.9
