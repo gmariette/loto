@@ -178,6 +178,16 @@ nouvelle grille ni depenser le budget d'une cohorte de numeros. Sur 1 749 tirage
 delta de deviance vaut `-0,00888`, mais l'IC temporel `[-0,02199 ; 0,00632]` et la p-value `0,099`
 laissent le statut `qualified=false`. Les facteurs bruts des numeros 5 et 7 sont plus eleves,
 mais leur instabilite ne justifie pas encore de les eviter.
+
+La version 0.24 ajoute un challenger interactionnel pour la popularite des cinq numeros. Il reduit
+la deviance historique a `1,66104` contre `1,69002`, avec delta `-0,58981`, IC
+`[-0,88509 ; -0,35812]` et p-value `0,000500`. La borne conservatrice de sa selection actuelle
+est toutefois `0,45873`, superieure a `0,29434` pour la v0.22 de base; il reste donc optionnel et
+n'ouvre aucune nouvelle grille prospective.
+Cohorte challenger : `c87b31a80bde6e4fba5a92ee49f437bb5de7b8044c66ef0494bacea2ad144393`.
+Tete du challenger : `b7637fc5f579818fe26508fb190af9c69664a6ed6b23b2d8b04d034c4fd914c7`.
+Empreinte du bundle apres preenregistrement :
+`fe481c0d43e8f987389aa211c23a14a6cb83ed6628a7fff9a24b940469a63e92`.
 Cohorte de foule : `d16157d6de3d4cf94beb79fc07049eab0d64907eb964e3721a4ec4e7d883e3d4`.
 Tete de foule : `358b4a959fd8f694f030fdcfb79f73e8259025a20841ca5a39ba99c73de7fe73`.
 Cohorte de numeros : `1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb`.
