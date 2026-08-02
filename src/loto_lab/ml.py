@@ -827,7 +827,7 @@ def predict_next_draw(
         "warning": "Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.",
         **(
             {
-                "selection_objective": "value_aware_anti_crowd",
+                "selection_objective": "value_aware_conservative_anti_crowd",
                 "value_aware_selection": value_selection.to_dict(),
                 "popularity_validation": popularity_predictor.validation.to_dict(),
             }

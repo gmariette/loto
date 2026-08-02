@@ -193,7 +193,13 @@ def _value_aware_predictor(
         raise SystemExit(
             "Le modele de popularite ne bat pas la reference uniforme: optimisation refusee"
         )
-    return fit_popularity_predictor(draws, result)
+    return fit_popularity_predictor(
+        draws,
+        result,
+        bootstrap_models=args.popularity_bootstrap_models,
+        uncertainty_quantile=args.popularity_uncertainty_quantile,
+        seed=args.seed,
+    )
 
 
 def command_ml_predict(args: argparse.Namespace) -> None:
@@ -258,6 +264,8 @@ def command_ml_record(args: argparse.Namespace) -> None:
         value_aware=args.value_aware,
         max_expected_hit_loss=args.max_expected_hit_loss,
         popularity_block_size=args.popularity_block_size,
+        popularity_bootstrap_models=args.popularity_bootstrap_models,
+        popularity_uncertainty_quantile=args.popularity_uncertainty_quantile,
     )
     record = record_number_forecast(
         args.ledger,
@@ -587,6 +595,10 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--value-aware", action="store_true")
     ml_predict.add_argument("--max-expected-hit-loss", type=float, default=0.005)
     ml_predict.add_argument("--popularity-block-size", type=int, default=12)
+    ml_predict.add_argument("--popularity-bootstrap-models", type=int, default=100)
+    ml_predict.add_argument(
+        "--popularity-uncertainty-quantile", type=float, default=0.9
+    )
     ml_predict.set_defaults(handler=command_ml_predict)
 
     ml_record = subparsers.add_parser(
@@ -606,6 +618,10 @@ def build_parser() -> argparse.ArgumentParser:
     ml_record.add_argument("--value-aware", action="store_true")
     ml_record.add_argument("--max-expected-hit-loss", type=float, default=0.005)
     ml_record.add_argument("--popularity-block-size", type=int, default=12)
+    ml_record.add_argument("--popularity-bootstrap-models", type=int, default=100)
+    ml_record.add_argument(
+        "--popularity-uncertainty-quantile", type=float, default=0.9
+    )
     ml_record.add_argument(
         "--ledger", type=Path, default=Path("data/number-prospective.sqlite")
     )
