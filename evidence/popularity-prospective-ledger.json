@@ -1,0 +1,151 @@
+{
+  "format": "loto-lab.popularity-prospective-ledger",
+  "schema_version": 1,
+  "ledger": {
+    "valid": true,
+    "errors": [],
+    "snapshots": 1,
+    "scores": 0,
+    "snapshot_head_hash": "82faaae055cd23141698150c15c2bb3b8facfde54e9d65a0bb44f072e6f6f9e0",
+    "score_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "cohorts": [
+      {
+        "evaluation_cohort": "4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e",
+        "cohort_index": 1,
+        "model_versions": [
+          "0.21.0"
+        ],
+        "snapshots": 1,
+        "scores": 0,
+        "qualification_scores": 0,
+        "qualification_target": 100,
+        "alpha_budget": 0.025,
+        "mean_model_deviance": null,
+        "mean_baseline_deviance": null,
+        "mean_deviance_delta": null,
+        "delta_ci_low": null,
+        "delta_ci_high": null,
+        "block_sign_p_value": null,
+        "qualification_status": "insufficient_data"
+      }
+    ]
+  },
+  "snapshots": [
+    {
+      "id": 1,
+      "created_at": "2026-08-02T06:59:32.261143+00:00",
+      "model_version": "0.21.0",
+      "evaluation_cohort": "4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e",
+      "cohort_index": 1,
+      "game": "loto",
+      "target_date": "2026-08-03",
+      "training_last_date": "2026-08-01",
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_hash": "82faaae055cd23141698150c15c2bb3b8facfde54e9d65a0bb44f072e6f6f9e0",
+      "payload": {
+        "model": {
+          "alpha": 0.1,
+          "baseline_multiplier": 1.0351244716591097,
+          "bootstrap_models": 100,
+          "feature_names": [
+            "numbers_above_31",
+            "all_numbers_at_most_31",
+            "consecutive_pairs",
+            "lucky_numbers_7_13",
+            "normalized_sum",
+            "distance_from_central_sum"
+          ],
+          "historical_validation": {
+            "baseline_poisson_deviance": 0.7939060707828852,
+            "delta_ci_high": -0.003455970977778404,
+            "delta_ci_low": -0.09839103519017693,
+            "deviance_delta": -0.04415209267443914,
+            "final_alpha": 0.1,
+            "game": "loto",
+            "inference_method": "moving_block_bootstrap_and_block_sign_permutation",
+            "mean_poisson_deviance": 0.7497539781084461,
+            "observations": 1472,
+            "outer_folds": 3,
+            "permutation_p_value": 0.038980509745127435,
+            "qualified": true,
+            "selected_alphas": [
+              100.0,
+              0.001,
+              0.1
+            ],
+            "temporal_block_size": 12,
+            "test_observations": 972
+          },
+          "observations": 1472,
+          "raw_coefficients": [
+            -0.04371642069584801,
+            0.6253438988027539,
+            -0.17689098003304712,
+            0.002779014894960448,
+            -0.880525503606746,
+            0.7964023702994628
+          ],
+          "raw_intercept": 0.5655000829897961,
+          "uncertainty_quantile": 0.9
+        },
+        "model_specification": {
+          "format": "loto-lab.popularity-model",
+          "parameters": {
+            "block_size": 12,
+            "bootstrap_models": 100,
+            "game": "loto",
+            "min_train": 500,
+            "outer_folds": 3,
+            "seed": 20260803,
+            "simulations": 2000,
+            "uncertainty_quantile": 0.9
+          },
+          "runtime": {
+            "numpy": "2.4.2",
+            "python": "3.12.6",
+            "scikit-learn": "1.7.0"
+          },
+          "sha256": "4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e",
+          "source_files": [
+            {
+              "path": "loto_lab/domain.py",
+              "sha256": "bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558"
+            },
+            {
+              "path": "loto_lab/popularity.py",
+              "sha256": "019ae6ee47ba3eaca8c5eb586ceda600f69973fc7b675c6105680118e7fa95bf"
+            },
+            {
+              "path": "loto_lab/popularity_prospective.py",
+              "sha256": "3a2d4d69ffc34dd48575e6d478faee1408f5a9d9795f6bad2c0238f4771fcd25"
+            },
+            {
+              "path": "loto_lab/probability.py",
+              "sha256": "5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5"
+            }
+          ],
+          "specification_version": 1
+        },
+        "provenance": {
+          "data": {
+            "draws_snapshot": {
+              "count": 2860,
+              "first_date": "2008-10-06",
+              "last_date": "2026-08-01",
+              "sha256": "cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc"
+            },
+            "files": [
+              {
+                "path": "data/loto.sqlite",
+                "sha256": "d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4",
+                "size": 4161536
+              }
+            ]
+          }
+        }
+      },
+      "payload_canonical_json": "{\"model\":{\"alpha\":0.1,\"baseline_multiplier\":1.0351244716591097,\"bootstrap_models\":100,\"feature_names\":[\"numbers_above_31\",\"all_numbers_at_most_31\",\"consecutive_pairs\",\"lucky_numbers_7_13\",\"normalized_sum\",\"distance_from_central_sum\"],\"historical_validation\":{\"baseline_poisson_deviance\":0.7939060707828852,\"delta_ci_high\":-0.003455970977778404,\"delta_ci_low\":-0.09839103519017693,\"deviance_delta\":-0.04415209267443914,\"final_alpha\":0.1,\"game\":\"loto\",\"inference_method\":\"moving_block_bootstrap_and_block_sign_permutation\",\"mean_poisson_deviance\":0.7497539781084461,\"observations\":1472,\"outer_folds\":3,\"permutation_p_value\":0.038980509745127435,\"qualified\":true,\"selected_alphas\":[100.0,0.001,0.1],\"temporal_block_size\":12,\"test_observations\":972},\"observations\":1472,\"raw_coefficients\":[-0.04371642069584801,0.6253438988027539,-0.17689098003304712,0.002779014894960448,-0.880525503606746,0.7964023702994628],\"raw_intercept\":0.5655000829897961,\"uncertainty_quantile\":0.9},\"model_specification\":{\"format\":\"loto-lab.popularity-model\",\"parameters\":{\"block_size\":12,\"bootstrap_models\":100,\"game\":\"loto\",\"min_train\":500,\"outer_folds\":3,\"seed\":20260803,\"simulations\":2000,\"uncertainty_quantile\":0.9},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/popularity.py\",\"sha256\":\"019ae6ee47ba3eaca8c5eb586ceda600f69973fc7b675c6105680118e7fa95bf\"},{\"path\":\"loto_lab/popularity_prospective.py\",\"sha256\":\"3a2d4d69ffc34dd48575e6d478faee1408f5a9d9795f6bad2c0238f4771fcd25\"},{\"path\":\"loto_lab/probability.py\",\"sha256\":\"5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5\"}],\"specification_version\":1},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2860,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-08-01\",\"sha256\":\"cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4\",\"size\":4161536}]}}}"
+    }
+  ],
+  "scores": []
+}

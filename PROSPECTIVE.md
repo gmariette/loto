@@ -143,3 +143,17 @@ qui pilote la selection, sans pretendre augmenter la probabilite de sortie. La c
 alpha de `0,0016667`. Tete append-only :
 `dac620853e531f4f69f595192feab7901ca08829a6c8c0e6e791b6c6e035fe5a`. Empreinte du bundle :
 `2a2d41a1468b3043ff0cf4d80de70911f4a3f4c19069b254118b7c272848da7d`.
+
+La version 0.21 ouvre un registre separe pour transformer la qualification historique du modele de
+popularite en test prospectif. Les coefficients bruts, le backtest, l'identite scientifique et le
+snapshot des donnees sont figes avant le tirage; apres cloture, le score compare la deviance de
+Poisson du modele a celle d'une popularite uniforme. Le volume de tickets reste estime par le rang
+9. Les hashes sont aussi verifies contre un recalcul integral des metriques, pas uniquement contre
+la chaine append-only.
+
+La premiere cohorte exige 100 scores futurs et dispose d'un budget alpha de `0,025`. Son premier
+snapshot cible le 3 aout 2026 et reste `insufficient_data` avec zero score. Cohorte :
+`4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e`. Tete append-only :
+`82faaae055cd23141698150c15c2bb3b8facfde54e9d65a0bb44f072e6f6f9e0`. Empreinte du bundle :
+`bffe038a68f0f19564e8870c0fd0fea06616c4a2e7aece5b3bf555bea7197372`. Cette preuve n'ajoute
+aucune grille et ne modifie pas la selection v0.20.
