@@ -180,6 +180,18 @@ signe reste stable dans les validations temporelles : nombres au-dessus de 31, g
 dans 1-31, paires consecutives, 7/13, somme et distance a la somme centrale. L'intervalle et la
 p-value utilisent des blocs temporels pour conserver l'autocorrelation des habitudes de jeu.
 
+Un challenger optionnel ajoute des interactions entre la proportion de nombres superieurs a 31,
+les paires consecutives et la somme :
+
+```bash
+loto-lab popularity-backtest data/loto.sqlite --target main_combination \
+  --feature-set interactions --game loto --min-train 500 --folds 3
+```
+
+Il améliore la deviance historique (`1,66104` contre `1,69002`), mais sa borne conservatrice sur
+la grille courante monte a `0,45873` contre `0,29434` pour le modele de base. Il reste donc
+experimental et le modele `base` demeure la valeur par defaut.
+
 Une prediction experimentale peut ensuite chercher exhaustivement la combinaison la moins
 populaire parmi celles qui respectent un budget explicite de perte de hits attendus :
 

@@ -14,7 +14,7 @@ from . import __version__
 from .domain import Draw, PrizeResult
 from .model_identity import validate_popularity_model_specification
 from .popularity import (
-    FEATURE_NAMES,
+    FEATURE_SETS,
     POPULARITY_TARGETS,
     PopularityPredictor,
     _feature_matrix,
@@ -197,7 +197,7 @@ def serialize_popularity_predictor(predictor: PopularityPredictor) -> dict[str, 
         predictor.model.coef_, predictor.scaler.mean_ / predictor.scaler.scale_
     )
     return {
-        "feature_names": list(FEATURE_NAMES),
+        "feature_names": list(predictor.feature_names),
         "raw_intercept": float(raw_intercept),
         "raw_coefficients": [float(value) for value in raw_coefficients],
         "baseline_multiplier": predictor.baseline_multiplier,
@@ -206,6 +206,7 @@ def serialize_popularity_predictor(predictor: PopularityPredictor) -> dict[str, 
         "bootstrap_models": len(predictor.bootstrap_intercepts),
         "uncertainty_quantile": predictor.uncertainty_quantile,
         "target": predictor.validation.target,
+        "feature_set": predictor.validation.feature_set,
         "historical_validation": predictor.validation.to_dict(),
     }
 
@@ -224,6 +225,10 @@ def _validate_predictor_specification(
         len(predictor.bootstrap_intercepts) == parameters.get("bootstrap_models"),
         predictor.uncertainty_quantile == parameters.get("uncertainty_quantile"),
         validation.target == parameters.get("target", "jackpot"),
+        validation.feature_set == parameters.get("feature_set", "base"),
+        predictor.feature_names == FEATURE_SETS.get(
+            parameters.get("feature_set", "base")
+        ),
     )
     if not all(checks):
         raise ValueError("Le modele ne correspond pas a sa specification scientifique")
@@ -232,10 +237,11 @@ def _validate_predictor_specification(
 def _validate_serialized_model(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("Modele de popularite serialise invalide")
-    if value.get("feature_names") != list(FEATURE_NAMES):
+    feature_names = tuple(value.get("feature_names", ()))
+    if feature_names not in FEATURE_SETS.values():
         raise ValueError("Variables du modele de popularite incompatibles")
     coefficients = value.get("raw_coefficients")
-    if not isinstance(coefficients, list) or len(coefficients) != len(FEATURE_NAMES):
+    if not isinstance(coefficients, list) or len(coefficients) != len(feature_names):
         raise ValueError("Coefficients du modele de popularite invalides")
     numeric = [
         value.get("raw_intercept"),
@@ -365,7 +371,9 @@ def _draw_popularity_values(
 def _prediction_for_draw(model: dict[str, object], draw: Draw) -> tuple[float, float]:
     validated = _validate_serialized_model(model)
     features = _feature_matrix(
-        np.asarray([draw.main], dtype=int), np.asarray([draw.chance], dtype=int)
+        np.asarray([draw.main], dtype=int),
+        np.asarray([draw.chance], dtype=int),
+        tuple(validated["feature_names"]),
     )[0]
     multiplier = float(
         np.exp(

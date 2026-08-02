@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from .domain import DEFAULT_RULES, Draw, Ticket
 from .probability import rank_probabilities, total_outcomes
 
-FEATURE_NAMES = (
+BASE_FEATURE_NAMES = (
     "numbers_above_31",
     "all_numbers_at_most_31",
     "consecutive_pairs",
@@ -20,6 +20,19 @@ FEATURE_NAMES = (
     "normalized_sum",
     "distance_from_central_sum",
 )
+INTERACTION_FEATURE_NAMES = BASE_FEATURE_NAMES + (
+    "numbers_above_31_sum_interaction",
+    "consecutive_sum_interaction",
+    "numbers_above_31_squared",
+    "consecutive_pairs_squared",
+    "normalized_sum_squared",
+)
+FEATURE_SETS = {
+    "base": BASE_FEATURE_NAMES,
+    "interactions": INTERACTION_FEATURE_NAMES,
+}
+# Backward-compatible public alias used by v0.21/v0.22 evidence.
+FEATURE_NAMES = BASE_FEATURE_NAMES
 ALPHAS = (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
 POPULARITY_TARGETS = ("jackpot", "main_combination")
 POPULARITY_HYPOTHESES = len(POPULARITY_TARGETS)
@@ -52,6 +65,7 @@ class PopularityBacktestResult:
     temporal_block_size: int
     inference_method: str
     qualified: bool
+    feature_set: str = "base"
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -68,9 +82,10 @@ class PopularityPredictor:
     bootstrap_intercepts: np.ndarray
     bootstrap_coefficients: np.ndarray
     uncertainty_quantile: float
+    feature_names: tuple[str, ...] = BASE_FEATURE_NAMES
 
     def multipliers(self, mains: np.ndarray, chances: np.ndarray) -> np.ndarray:
-        features = _feature_matrix(mains, chances)
+        features = _feature_matrix(mains, chances, self.feature_names)
         return self.model.predict(self.scaler.transform(features))
 
     def multiplier(self, ticket: Ticket) -> float:
@@ -81,7 +96,7 @@ class PopularityPredictor:
     def conservative_multipliers(
         self, mains: np.ndarray, chances: np.ndarray
     ) -> np.ndarray:
-        features = _feature_matrix(mains, chances)
+        features = _feature_matrix(mains, chances, self.feature_names)
         log_relative = (
             self.bootstrap_intercepts[np.newaxis, :]
             + features @ self.bootstrap_coefficients.T
@@ -166,10 +181,16 @@ def popularity_observations(
     return sorted(observations, key=lambda item: item.draw.draw_date)
 
 
-def _feature_matrix(mains: np.ndarray, chances: np.ndarray) -> np.ndarray:
+def _feature_matrix(
+    mains: np.ndarray,
+    chances: np.ndarray,
+    feature_names: tuple[str, ...] = BASE_FEATURE_NAMES,
+) -> np.ndarray:
+    if feature_names not in FEATURE_SETS.values():
+        raise ValueError("Schema de variables de popularite inconnu")
     ordered = np.sort(np.asarray(mains, dtype=int), axis=1)
     gaps = np.diff(ordered, axis=1)
-    return np.column_stack(
+    base = np.column_stack(
         (
             np.sum(ordered > 31, axis=1),
             np.all(ordered <= 31, axis=1),
@@ -179,10 +200,23 @@ def _feature_matrix(mains: np.ndarray, chances: np.ndarray) -> np.ndarray:
             np.abs(np.sum(ordered, axis=1) - 125) / 100,
         )
     ).astype(float)
+    if feature_names == BASE_FEATURE_NAMES:
+        return base
+    return np.column_stack(
+        (
+            base,
+            base[:, 0] * base[:, 4],
+            base[:, 2] * base[:, 4],
+            base[:, 0] ** 2,
+            base[:, 2] ** 2,
+            base[:, 4] ** 2,
+        )
+    ).astype(float)
 
 
 def _arrays(
     observations: list[PopularityObservation],
+    feature_names: tuple[str, ...] = BASE_FEATURE_NAMES,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     dates = np.asarray(
         [item.draw.draw_date.toordinal() for item in observations], dtype=int
@@ -191,7 +225,7 @@ def _arrays(
     chances = np.asarray([item.draw.chance for item in observations], dtype=int)
     actual = np.asarray([item.jackpot_winners for item in observations], dtype=float)
     exposure = np.asarray([item.exposure for item in observations], dtype=float)
-    return dates, _feature_matrix(mains, chances), actual, exposure
+    return dates, _feature_matrix(mains, chances, feature_names), actual, exposure
 
 
 def _fit(
@@ -277,15 +311,19 @@ def popularity_backtest(
     block_size: int = 12,
     seed: int = 0,
     target: str = "jackpot",
+    feature_set: str = "base",
 ) -> PopularityBacktestResult:
     if min_train < 100 or outer_folds < 2 or simulations < 100 or block_size < 1:
         raise ValueError(
             "Il faut min_train >= 100, 2 folds, 100 simulations et block_size >= 1"
         )
+    if feature_set not in FEATURE_SETS:
+        raise ValueError(f"Schema de variables inconnu: {feature_set}")
+    feature_names = FEATURE_SETS[feature_set]
     observations = popularity_observations(draws, game, target)
     if len(observations) <= min_train:
         raise ValueError("Historique insuffisant pour le modele de popularite")
-    dates, features, actual, exposure = _arrays(observations)
+    dates, features, actual, exposure = _arrays(observations, feature_names)
     if actual.sum() <= 0:
         raise ValueError("Aucun gagnant pour ajuster la popularite")
     eligible_dates = np.unique(dates[min_train:])
@@ -344,6 +382,7 @@ def popularity_backtest(
         temporal_block_size=effective_block,
         inference_method="moving_block_bootstrap_and_block_sign_permutation",
         qualified=high < 0 and adjusted_p_value < 0.05,
+        feature_set=feature_set,
     )
 
 
@@ -359,7 +398,8 @@ def fit_popularity_predictor(
             "Il faut au moins 20 modeles bootstrap et un quantile dans [0,5; 1["
         )
     observations = popularity_observations(draws, result.game, result.target)
-    _, features, actual, exposure = _arrays(observations)
+    feature_names = FEATURE_SETS[result.feature_set]
+    _, features, actual, exposure = _arrays(observations, feature_names)
     indices = np.arange(len(observations))
     scaler, model = _fit(
         features, actual, exposure, indices, result.final_alpha
@@ -402,6 +442,7 @@ def fit_popularity_predictor(
         bootstrap_intercepts=np.asarray(bootstrap_intercepts),
         bootstrap_coefficients=np.asarray(bootstrap_coefficients),
         uncertainty_quantile=uncertainty_quantile,
+        feature_names=feature_names,
     )
 
 
