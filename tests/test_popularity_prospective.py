@@ -38,6 +38,7 @@ def popularity_draws(count: int = 240) -> list[Draw]:
                 start + timedelta(days=index),
                 prizes=(
                     PrizeResult(1, winners, 2_000_000.0),
+                    PrizeResult(2, 3 if winners else 0, 100_000.0),
                     PrizeResult(9, 100_000, 2.2),
                 ),
             )
@@ -75,7 +76,9 @@ class PopularityProspectiveTests(unittest.TestCase):
         self.directory.cleanup()
 
     @staticmethod
-    def _specification(seed: int) -> dict[str, object]:
+    def _specification(
+        seed: int, target: str = "jackpot"
+    ) -> dict[str, object]:
         return build_popularity_model_specification(
             game="loto",
             min_train=100,
@@ -85,6 +88,7 @@ class PopularityProspectiveTests(unittest.TestCase):
             seed=seed,
             bootstrap_models=20,
             uncertainty_quantile=0.9,
+            target=target,
         )
 
     @staticmethod
@@ -95,6 +99,7 @@ class PopularityProspectiveTests(unittest.TestCase):
             target,
             prizes=(
                 PrizeResult(1, 2, 2_000_000.0),
+                PrizeResult(2, 3, 100_000.0),
                 PrizeResult(9, 100_000, 2.2),
             ),
         )
@@ -216,6 +221,38 @@ class PopularityProspectiveTests(unittest.TestCase):
                 provenance=self.provenance,
                 current_time=datetime(2030, 1, 1, tzinfo=UTC),
             )
+
+    def test_main_combination_snapshot_scores_ranks_one_and_two(self) -> None:
+        result = popularity_backtest(
+            self.draws,
+            target="main_combination",
+            min_train=100,
+            outer_folds=2,
+            simulations=100,
+            block_size=6,
+            seed=12,
+        )
+        predictor = fit_popularity_predictor(
+            self.draws, result, bootstrap_models=20, seed=12
+        )
+        target = self.draws[-1].draw_date + timedelta(days=1)
+        record_popularity_snapshot(
+            self.ledger,
+            predictor,
+            self.draws,
+            target,
+            model_specification=self._specification(12, "main_combination"),
+            provenance=self.provenance,
+            current_time=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        scored = score_pending_popularity_snapshots(
+            self.ledger,
+            [self._result_draw(target)],
+            provenance=self.score_provenance,
+            current_time=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+        self.assertEqual(scored["scores"][0]["jackpot_winners"], 5)
+        self.assertTrue(verify_popularity_ledger(self.ledger)["valid"])
 
     def test_qualification_is_frozen_on_first_hundred_scores(self) -> None:
         start = self.draws[-1].draw_date + timedelta(days=1)

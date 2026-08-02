@@ -15,12 +15,12 @@ from .domain import Draw, PrizeResult
 from .model_identity import validate_popularity_model_specification
 from .popularity import (
     FEATURE_NAMES,
+    POPULARITY_TARGETS,
     PopularityPredictor,
     _feature_matrix,
     _poisson_deviance,
     popularity_observations,
 )
-from .probability import rank_probabilities, total_outcomes
 from .prospective import (
     GENESIS_HASH,
     _recording_is_open,
@@ -205,6 +205,7 @@ def serialize_popularity_predictor(predictor: PopularityPredictor) -> dict[str, 
         "observations": predictor.observations,
         "bootstrap_models": len(predictor.bootstrap_intercepts),
         "uncertainty_quantile": predictor.uncertainty_quantile,
+        "target": predictor.validation.target,
         "historical_validation": predictor.validation.to_dict(),
     }
 
@@ -222,6 +223,7 @@ def _validate_predictor_specification(
         == min(int(parameters.get("block_size", 0)), validation.test_observations),
         len(predictor.bootstrap_intercepts) == parameters.get("bootstrap_models"),
         predictor.uncertainty_quantile == parameters.get("uncertainty_quantile"),
+        validation.target == parameters.get("target", "jackpot"),
     )
     if not all(checks):
         raise ValueError("Le modele ne correspond pas a sa specification scientifique")
@@ -244,6 +246,8 @@ def _validate_serialized_model(value: object) -> dict[str, object]:
         raise ValueError("Parametres non finis dans le modele de popularite")
     if float(value["baseline_multiplier"]) <= 0:
         raise ValueError("Reference de popularite invalide")
+    if value.get("target", "jackpot") not in POPULARITY_TARGETS:
+        raise ValueError("Cible du modele de popularite invalide")
     return value
 
 
@@ -265,7 +269,8 @@ def record_popularity_snapshot(
         raise ValueError("Parametres scientifiques de popularite manquants")
     _validate_predictor_specification(predictor, parameters)
     game = str(parameters.get("game", ""))
-    observations = popularity_observations(draws, game)
+    target = str(parameters.get("target", "jackpot"))
+    observations = popularity_observations(draws, game, target)
     if not observations or observations[-1].draw.draw_date is None:
         raise ValueError("Aucune observation de popularite datee")
     if predictor.observations != len(observations):
@@ -343,17 +348,18 @@ def record_popularity_snapshot(
         connection.close()
 
 
-def _draw_popularity_values(draw: Draw) -> tuple[int, float, float]:
-    prizes = {prize.rank: prize for prize in draw.prizes}
-    rank_1 = prizes.get(1)
-    rank_9 = prizes.get(9)
-    if rank_1 is None or rank_1.winners is None:
-        raise ValueError("Nombre de gagnants du rang 1 manquant")
-    if rank_9 is None or rank_9.winners is None or rank_9.winners <= 0:
-        raise ValueError("Nombre de gagnants du rang 9 manquant")
-    rank_9_probability = {item.rank: item.probability for item in rank_probabilities()}[9]
-    estimated_tickets = rank_9.winners / rank_9_probability
-    return rank_1.winners, estimated_tickets, estimated_tickets / total_outcomes()
+def _draw_popularity_values(
+    draw: Draw, target: str = "jackpot"
+) -> tuple[int, float, float]:
+    observations = popularity_observations([draw], draw.game, target)
+    if not observations:
+        raise ValueError("Rapports necessaires au score de popularite manquants")
+    observation = observations[0]
+    return (
+        observation.jackpot_winners,
+        observation.estimated_tickets,
+        observation.exposure,
+    )
 
 
 def _prediction_for_draw(model: dict[str, object], draw: Draw) -> tuple[float, float]:
@@ -427,14 +433,18 @@ def score_pending_popularity_snapshots(
                 )
                 continue
             try:
-                actual, estimated_tickets, exposure = _draw_popularity_values(draw)
+                payload = json.loads(str(snapshot["payload_json"]))
+                model = payload["model"]
+                target_name = str(model.get("target", "jackpot"))
+                actual, estimated_tickets, exposure = _draw_popularity_values(
+                    draw, target_name
+                )
             except ValueError:
                 skipped.append(
                     {"snapshot_id": int(snapshot["id"]), "reason": "rapports_incomplets"}
                 )
                 continue
-            payload = json.loads(str(snapshot["payload_json"]))
-            multiplier, baseline_multiplier = _prediction_for_draw(payload["model"], draw)
+            multiplier, baseline_multiplier = _prediction_for_draw(model, draw)
             predicted = multiplier * exposure
             baseline = baseline_multiplier * exposure
             model_deviance = float(
@@ -645,7 +655,8 @@ def _verify_connection(connection: sqlite3.Connection) -> dict[str, object]:
                 "target_date"
             ]:
                 errors.append(f"score:{row['id']}:target")
-            actual, estimated_tickets, exposure = _draw_popularity_values(draw)
+            target_name = str(model.get("target", "jackpot"))
+            actual, estimated_tickets, exposure = _draw_popularity_values(draw, target_name)
             multiplier, baseline_multiplier = _prediction_for_draw(model, draw)
             predicted = multiplier * exposure
             baseline = baseline_multiplier * exposure

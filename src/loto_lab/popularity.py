@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from itertools import combinations, islice
-from math import ceil
+from math import ceil, comb
 
 import numpy as np
 from sklearn.linear_model import PoissonRegressor
@@ -21,6 +21,8 @@ FEATURE_NAMES = (
     "distance_from_central_sum",
 )
 ALPHAS = (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
+POPULARITY_TARGETS = ("jackpot", "main_combination")
+POPULARITY_HYPOTHESES = len(POPULARITY_TARGETS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +36,7 @@ class PopularityObservation:
 @dataclass(frozen=True, slots=True)
 class PopularityBacktestResult:
     game: str
+    target: str
     observations: int
     test_observations: int
     outer_folds: int
@@ -45,6 +48,7 @@ class PopularityBacktestResult:
     delta_ci_low: float
     delta_ci_high: float
     permutation_p_value: float
+    adjusted_p_value: float
     temporal_block_size: int
     inference_method: str
     qualified: bool
@@ -118,8 +122,10 @@ class ValueAwareSelection:
 
 
 def popularity_observations(
-    draws: list[Draw], game: str = "loto"
+    draws: list[Draw], game: str = "loto", target: str = "jackpot"
 ) -> list[PopularityObservation]:
+    if target not in POPULARITY_TARGETS:
+        raise ValueError(f"Cible de popularite inconnue: {target}")
     rank_9_probability = {item.rank: item.probability for item in rank_probabilities()}[9]
     observations = []
     for draw in draws:
@@ -127,22 +133,34 @@ def popularity_observations(
             continue
         prizes = {prize.rank: prize for prize in draw.prizes}
         rank_1 = prizes.get(1)
+        rank_2 = prizes.get(2)
         rank_9 = prizes.get(9)
         if (
             rank_1 is None
             or rank_1.winners is None
+            or (
+                target == "main_combination"
+                and (rank_2 is None or rank_2.winners is None)
+            )
             or rank_9 is None
             or rank_9.winners is None
             or rank_9.winners <= 0
         ):
             continue
         estimated_tickets = rank_9.winners / rank_9_probability
+        winners = rank_1.winners
+        exposure = estimated_tickets / total_outcomes()
+        if target == "main_combination":
+            winners += rank_2.winners
+            exposure = estimated_tickets / comb(
+                DEFAULT_RULES.main_pool, DEFAULT_RULES.main_drawn
+            )
         observations.append(
             PopularityObservation(
                 draw,
-                rank_1.winners,
+                winners,
                 estimated_tickets,
-                estimated_tickets / total_outcomes(),
+                exposure,
             )
         )
     return sorted(observations, key=lambda item: item.draw.draw_date)
@@ -258,17 +276,18 @@ def popularity_backtest(
     simulations: int = 2_000,
     block_size: int = 12,
     seed: int = 0,
+    target: str = "jackpot",
 ) -> PopularityBacktestResult:
     if min_train < 100 or outer_folds < 2 or simulations < 100 or block_size < 1:
         raise ValueError(
             "Il faut min_train >= 100, 2 folds, 100 simulations et block_size >= 1"
         )
-    observations = popularity_observations(draws, game)
+    observations = popularity_observations(draws, game, target)
     if len(observations) <= min_train:
         raise ValueError("Historique insuffisant pour le modele de popularite")
     dates, features, actual, exposure = _arrays(observations)
     if actual.sum() <= 0:
-        raise ValueError("Aucun gagnant du jackpot pour ajuster la popularite")
+        raise ValueError("Aucun gagnant pour ajuster la popularite")
     eligible_dates = np.unique(dates[min_train:])
     folds = [fold for fold in np.array_split(eligible_dates, outer_folds) if len(fold)]
     model_scores = []
@@ -301,6 +320,7 @@ def popularity_backtest(
         if float((deltas * signs).mean()) <= float(deltas.mean()):
             extreme += 1
     p_value = (extreme + 1) / (simulations + 1)
+    adjusted_p_value = min(1.0, p_value * POPULARITY_HYPOTHESES)
     low = float(np.quantile(bootstrap, 0.025))
     high = float(np.quantile(bootstrap, 0.975))
     final_alpha = _select_alpha(
@@ -308,6 +328,7 @@ def popularity_backtest(
     )
     return PopularityBacktestResult(
         game=game,
+        target=target,
         observations=len(observations),
         test_observations=len(deltas),
         outer_folds=len(folds),
@@ -319,9 +340,10 @@ def popularity_backtest(
         delta_ci_low=low,
         delta_ci_high=high,
         permutation_p_value=p_value,
+        adjusted_p_value=adjusted_p_value,
         temporal_block_size=effective_block,
         inference_method="moving_block_bootstrap_and_block_sign_permutation",
-        qualified=high < 0 and p_value < 0.05,
+        qualified=high < 0 and adjusted_p_value < 0.05,
     )
 
 
@@ -336,7 +358,7 @@ def fit_popularity_predictor(
         raise ValueError(
             "Il faut au moins 20 modeles bootstrap et un quantile dans [0,5; 1["
         )
-    observations = popularity_observations(draws, result.game)
+    observations = popularity_observations(draws, result.game, result.target)
     _, features, actual, exposure = _arrays(observations)
     indices = np.arange(len(observations))
     scaler, model = _fit(

@@ -4,9 +4,9 @@
   "ledger": {
     "valid": true,
     "errors": [],
-    "forecasts": 5,
+    "forecasts": 6,
     "scores": 2,
-    "forecast_head_hash": "dac620853e531f4f69f595192feab7901ca08829a6c8c0e6e791b6c6e035fe5a",
+    "forecast_head_hash": "72e7d8efab3d809f418eae04e8dca2759e114094bbbd0ddc0bd418bad463b42f",
     "score_head_hash": "c581084c20a25d5af229368b2782b09d2ddd53a07e6d509b8879f01670a5d6cb",
     "cohorts": [
       {
@@ -115,6 +115,29 @@
         "qualification_scores": 0,
         "qualification_target": 100,
         "alpha_budget": 0.0016666666666666668,
+        "mean_main_hits": null,
+        "uniform_expected_main_hits": 0.5102040816326531,
+        "main_hit_uplift": null,
+        "uplift_ci_low": null,
+        "uplift_ci_high": null,
+        "exact_p_value": null,
+        "chance_hits": 0,
+        "qualification_status": "insufficient_data"
+      },
+      {
+        "evaluation_cohort": "1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb",
+        "cohort_index": 6,
+        "model_versions": [
+          "0.22.0"
+        ],
+        "models": [
+          "hierarchical_ridge_ranker"
+        ],
+        "forecasts": 1,
+        "scores": 0,
+        "qualification_scores": 0,
+        "qualification_target": 100,
+        "alpha_budget": 0.0011904761904761906,
         "mean_main_hits": null,
         "uniform_expected_main_hits": 0.5102040816326531,
         "main_hit_uplift": null,
@@ -888,6 +911,204 @@
         }
       },
       "payload_canonical_json": "{\"model_specification\":{\"format\":\"loto-lab.number-model\",\"parameters\":{\"game\":\"loto\",\"max_expected_hit_loss\":0.005,\"min_history\":50,\"min_train\":500,\"models\":[\"bayesian\",\"rolling_bayesian\",\"logistic\",\"gradient_boosting\",\"logistic_ranker\",\"ridge_ranker\",\"rolling_ridge_ranker\",\"hierarchical_ridge_ranker\"],\"outer_folds\":3,\"popularity_block_size\":12,\"popularity_bootstrap_models\":100,\"popularity_uncertainty_quantile\":0.9,\"seed\":20260803,\"simulations\":2000,\"value_aware\":true},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"67af5224bf5dd2a33799bec286e77a9bbe6728baca3284d2237b71ae44a0e212\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/ml.py\",\"sha256\":\"27c19ca43a69dd542a43a7c986640140982894a50a4693d2cf31297a3bb8d873\"},{\"path\":\"loto_lab/number_prospective.py\",\"sha256\":\"407b9c06a867a2361fe9265e0ac9cc58a98f5976694d4a541027e1bbaf39abd5\"},{\"path\":\"loto_lab/popularity.py\",\"sha256\":\"019ae6ee47ba3eaca8c5eb586ceda600f69973fc7b675c6105680118e7fa95bf\"},{\"path\":\"loto_lab/probability.py\",\"sha256\":\"5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5\"}],\"specification_version\":1},\"prediction\":{\"chance\":3,\"game\":\"loto\",\"marginal_probabilities\":{\"3\":0.10302280830522204,\"42\":0.10588868302968743,\"43\":0.10226401971361422,\"44\":0.10498807212401298,\"45\":0.10469533762131715},\"model\":\"hierarchical_ridge_ranker\",\"numbers\":[3,42,43,44,45],\"parameters\":{\"alpha\":10.0,\"uniform_blend\":1.0},\"popularity_validation\":{\"baseline_poisson_deviance\":0.7939060707828852,\"delta_ci_high\":-0.003455970977778404,\"delta_ci_low\":-0.09839103519017693,\"deviance_delta\":-0.04415209267443914,\"final_alpha\":0.1,\"game\":\"loto\",\"inference_method\":\"moving_block_bootstrap_and_block_sign_permutation\",\"mean_poisson_deviance\":0.7497539781084461,\"observations\":1472,\"outer_folds\":3,\"permutation_p_value\":0.038980509745127435,\"qualified\":true,\"selected_alphas\":[100.0,0.001,0.1],\"temporal_block_size\":12,\"test_observations\":972},\"probability_spread\":0.008313979545262945,\"selection_objective\":\"value_aware_conservative_anti_crowd\",\"status\":\"forced_experimental\",\"target_date\":\"2026-08-03\",\"training_last_date\":\"2026-08-01\",\"validation\":{\"adjusted_p_value\":1.0,\"adjusted_top5_p_value\":0.383808095952024,\"delta_ci_high\":1.8717824299167352e-06,\"delta_ci_low\":-3.4811705887916593e-06,\"mean_brier_delta\":-7.709850328823549e-07,\"mean_top5_hits\":0.537293434569004,\"qualification_basis\":\"none\",\"qualified\":false,\"test_draws\":2239,\"top5_ci_high\":0.05300494025211688,\"top5_ci_low\":-0.0010482084749933725,\"top5_hit_uplift\":0.027089352936350973,\"uniform_expected_top5_hits\":0.5102040816326531},\"value_aware_selection\":{\"baseline_popularity_multiplier\":1.0351244716591097,\"bootstrap_models\":100,\"combinations_evaluated\":1906884,\"conservative_popularity_multiplier\":0.6220353675539616,\"expected_hit_loss\":0.004557593775748492,\"expected_main_hits\":0.5208589207938538,\"feasible_combinations\":5377,\"predicted_popularity_multiplier\":0.46536678396824493,\"ticket\":{\"chance\":3,\"main\":[3,42,43,44,45]},\"top_conservative_popularity_multiplier\":0.9060476869530611,\"top_expected_main_hits\":0.5254165145696023,\"top_probability_ticket\":{\"chance\":3,\"main\":[11,20,40,42,44]},\"uncertainty_quantile\":0.9},\"warning\":\"Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.\"},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2860,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-08-01\",\"sha256\":\"cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4\",\"size\":4161536}]}}}"
+    },
+    {
+      "id": 6,
+      "created_at": "2026-08-02T07:15:24.483172+00:00",
+      "model_version": "0.22.0",
+      "evaluation_cohort": "1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb",
+      "cohort_index": 6,
+      "game": "loto",
+      "target_date": "2026-08-03",
+      "training_last_date": "2026-08-01",
+      "historical_status": "forced_experimental",
+      "model": "hierarchical_ridge_ranker",
+      "chance": 3,
+      "previous_hash": "dac620853e531f4f69f595192feab7901ca08829a6c8c0e6e791b6c6e035fe5a",
+      "record_hash": "72e7d8efab3d809f418eae04e8dca2759e114094bbbd0ddc0bd418bad463b42f",
+      "main": [
+        33,
+        42,
+        43,
+        44,
+        45
+      ],
+      "payload": {
+        "model_specification": {
+          "format": "loto-lab.number-model",
+          "parameters": {
+            "game": "loto",
+            "max_expected_hit_loss": 0.005,
+            "min_history": 50,
+            "min_train": 500,
+            "models": [
+              "bayesian",
+              "rolling_bayesian",
+              "logistic",
+              "gradient_boosting",
+              "logistic_ranker",
+              "ridge_ranker",
+              "rolling_ridge_ranker",
+              "hierarchical_ridge_ranker"
+            ],
+            "outer_folds": 3,
+            "popularity_block_size": 12,
+            "popularity_bootstrap_models": 100,
+            "popularity_target": "main_combination",
+            "popularity_uncertainty_quantile": 0.9,
+            "seed": 20260803,
+            "simulations": 2000,
+            "value_aware": true
+          },
+          "runtime": {
+            "numpy": "2.4.2",
+            "python": "3.12.6",
+            "scikit-learn": "1.7.0"
+          },
+          "sha256": "1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb",
+          "source_files": [
+            {
+              "path": "loto_lab/domain.py",
+              "sha256": "bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558"
+            },
+            {
+              "path": "loto_lab/ml.py",
+              "sha256": "27c19ca43a69dd542a43a7c986640140982894a50a4693d2cf31297a3bb8d873"
+            },
+            {
+              "path": "loto_lab/number_prospective.py",
+              "sha256": "407b9c06a867a2361fe9265e0ac9cc58a98f5976694d4a541027e1bbaf39abd5"
+            },
+            {
+              "path": "loto_lab/popularity.py",
+              "sha256": "027515d7decde5a28a5bb4760d6e6caf02aa462b55162920969f07b112a14623"
+            },
+            {
+              "path": "loto_lab/probability.py",
+              "sha256": "5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5"
+            }
+          ],
+          "specification_version": 1
+        },
+        "prediction": {
+          "chance": 3,
+          "game": "loto",
+          "marginal_probabilities": {
+            "33": 0.10316564060535117,
+            "42": 0.10588868302968743,
+            "43": 0.10226401971361422,
+            "44": 0.10498807212401298,
+            "45": 0.10469533762131715
+          },
+          "model": "hierarchical_ridge_ranker",
+          "numbers": [
+            33,
+            42,
+            43,
+            44,
+            45
+          ],
+          "parameters": {
+            "alpha": 10.0,
+            "uniform_blend": 1.0
+          },
+          "popularity_validation": {
+            "adjusted_p_value": 0.0009995002498750624,
+            "baseline_poisson_deviance": 2.2508515716574595,
+            "delta_ci_high": -0.33201586634041913,
+            "delta_ci_low": -0.8494578802317109,
+            "deviance_delta": -0.5608364699020423,
+            "final_alpha": 0.1,
+            "game": "loto",
+            "inference_method": "moving_block_bootstrap_and_block_sign_permutation",
+            "mean_poisson_deviance": 1.6900151017554172,
+            "observations": 1472,
+            "outer_folds": 3,
+            "permutation_p_value": 0.0004997501249375312,
+            "qualified": true,
+            "selected_alphas": [
+              0.001,
+              0.1,
+              0.001
+            ],
+            "target": "main_combination",
+            "temporal_block_size": 12,
+            "test_observations": 972
+          },
+          "probability_spread": 0.008313979545262945,
+          "selection_objective": "value_aware_conservative_anti_crowd",
+          "status": "forced_experimental",
+          "target_date": "2026-08-03",
+          "training_last_date": "2026-08-01",
+          "validation": {
+            "adjusted_p_value": 1.0,
+            "adjusted_top5_p_value": 0.383808095952024,
+            "delta_ci_high": 1.8717824299167352e-06,
+            "delta_ci_low": -3.4811705887916593e-06,
+            "mean_brier_delta": -7.709850328823549e-07,
+            "mean_top5_hits": 0.537293434569004,
+            "qualification_basis": "none",
+            "qualified": false,
+            "test_draws": 2239,
+            "top5_ci_high": 0.05300494025211688,
+            "top5_ci_low": -0.0010482084749933725,
+            "top5_hit_uplift": 0.027089352936350973,
+            "uniform_expected_top5_hits": 0.5102040816326531
+          },
+          "value_aware_selection": {
+            "baseline_popularity_multiplier": 1.00246875916034,
+            "bootstrap_models": 100,
+            "combinations_evaluated": 1906884,
+            "conservative_popularity_multiplier": 0.29434114842672476,
+            "expected_hit_loss": 0.0044147614756193665,
+            "expected_main_hits": 0.5210017530939829,
+            "feasible_combinations": 5377,
+            "predicted_popularity_multiplier": 0.24303264644861444,
+            "ticket": {
+              "chance": 3,
+              "main": [
+                33,
+                42,
+                43,
+                44,
+                45
+              ]
+            },
+            "top_conservative_popularity_multiplier": 0.8159221259739927,
+            "top_expected_main_hits": 0.5254165145696023,
+            "top_probability_ticket": {
+              "chance": 3,
+              "main": [
+                11,
+                20,
+                40,
+                42,
+                44
+              ]
+            },
+            "uncertainty_quantile": 0.9
+          },
+          "warning": "Une sortie forcee reste experimentale et ne constitue pas un avantage prouve."
+        },
+        "provenance": {
+          "data": {
+            "draws_snapshot": {
+              "count": 2860,
+              "first_date": "2008-10-06",
+              "last_date": "2026-08-01",
+              "sha256": "cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc"
+            },
+            "files": [
+              {
+                "path": "data/loto.sqlite",
+                "sha256": "d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4",
+                "size": 4161536
+              }
+            ]
+          }
+        }
+      },
+      "payload_canonical_json": "{\"model_specification\":{\"format\":\"loto-lab.number-model\",\"parameters\":{\"game\":\"loto\",\"max_expected_hit_loss\":0.005,\"min_history\":50,\"min_train\":500,\"models\":[\"bayesian\",\"rolling_bayesian\",\"logistic\",\"gradient_boosting\",\"logistic_ranker\",\"ridge_ranker\",\"rolling_ridge_ranker\",\"hierarchical_ridge_ranker\"],\"outer_folds\":3,\"popularity_block_size\":12,\"popularity_bootstrap_models\":100,\"popularity_target\":\"main_combination\",\"popularity_uncertainty_quantile\":0.9,\"seed\":20260803,\"simulations\":2000,\"value_aware\":true},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/ml.py\",\"sha256\":\"27c19ca43a69dd542a43a7c986640140982894a50a4693d2cf31297a3bb8d873\"},{\"path\":\"loto_lab/number_prospective.py\",\"sha256\":\"407b9c06a867a2361fe9265e0ac9cc58a98f5976694d4a541027e1bbaf39abd5\"},{\"path\":\"loto_lab/popularity.py\",\"sha256\":\"027515d7decde5a28a5bb4760d6e6caf02aa462b55162920969f07b112a14623\"},{\"path\":\"loto_lab/probability.py\",\"sha256\":\"5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5\"}],\"specification_version\":1},\"prediction\":{\"chance\":3,\"game\":\"loto\",\"marginal_probabilities\":{\"33\":0.10316564060535117,\"42\":0.10588868302968743,\"43\":0.10226401971361422,\"44\":0.10498807212401298,\"45\":0.10469533762131715},\"model\":\"hierarchical_ridge_ranker\",\"numbers\":[33,42,43,44,45],\"parameters\":{\"alpha\":10.0,\"uniform_blend\":1.0},\"popularity_validation\":{\"adjusted_p_value\":0.0009995002498750624,\"baseline_poisson_deviance\":2.2508515716574595,\"delta_ci_high\":-0.33201586634041913,\"delta_ci_low\":-0.8494578802317109,\"deviance_delta\":-0.5608364699020423,\"final_alpha\":0.1,\"game\":\"loto\",\"inference_method\":\"moving_block_bootstrap_and_block_sign_permutation\",\"mean_poisson_deviance\":1.6900151017554172,\"observations\":1472,\"outer_folds\":3,\"permutation_p_value\":0.0004997501249375312,\"qualified\":true,\"selected_alphas\":[0.001,0.1,0.001],\"target\":\"main_combination\",\"temporal_block_size\":12,\"test_observations\":972},\"probability_spread\":0.008313979545262945,\"selection_objective\":\"value_aware_conservative_anti_crowd\",\"status\":\"forced_experimental\",\"target_date\":\"2026-08-03\",\"training_last_date\":\"2026-08-01\",\"validation\":{\"adjusted_p_value\":1.0,\"adjusted_top5_p_value\":0.383808095952024,\"delta_ci_high\":1.8717824299167352e-06,\"delta_ci_low\":-3.4811705887916593e-06,\"mean_brier_delta\":-7.709850328823549e-07,\"mean_top5_hits\":0.537293434569004,\"qualification_basis\":\"none\",\"qualified\":false,\"test_draws\":2239,\"top5_ci_high\":0.05300494025211688,\"top5_ci_low\":-0.0010482084749933725,\"top5_hit_uplift\":0.027089352936350973,\"uniform_expected_top5_hits\":0.5102040816326531},\"value_aware_selection\":{\"baseline_popularity_multiplier\":1.00246875916034,\"bootstrap_models\":100,\"combinations_evaluated\":1906884,\"conservative_popularity_multiplier\":0.29434114842672476,\"expected_hit_loss\":0.0044147614756193665,\"expected_main_hits\":0.5210017530939829,\"feasible_combinations\":5377,\"predicted_popularity_multiplier\":0.24303264644861444,\"ticket\":{\"chance\":3,\"main\":[33,42,43,44,45]},\"top_conservative_popularity_multiplier\":0.8159221259739927,\"top_expected_main_hits\":0.5254165145696023,\"top_probability_ticket\":{\"chance\":3,\"main\":[11,20,40,42,44]},\"uncertainty_quantile\":0.9},\"warning\":\"Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.\"},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2860,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-08-01\",\"sha256\":\"cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4\",\"size\":4161536}]}}}"
     }
   ],
   "scores": [

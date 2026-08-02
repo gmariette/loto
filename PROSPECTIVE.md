@@ -157,3 +157,25 @@ snapshot cible le 3 aout 2026 et reste `insufficient_data` avec zero score. Coho
 `82faaae055cd23141698150c15c2bb3b8facfde54e9d65a0bb44f072e6f6f9e0`. Empreinte du bundle :
 `bffe038a68f0f19564e8870c0fd0fea06616c4a2e7aece5b3bf555bea7197372`. Cette preuve n'ajoute
 aucune grille et ne modifie pas la selection v0.20.
+
+La version 0.22 remplace la cible de selection de foule par `main_combination`. Elle additionne les
+gagnants des rangs 1 et 2, soit tous les tickets ayant trouve les cinq numeros principaux, puis
+divise le volume estime par `C(49,5)`. Sur les memes 972 observations externes, la deviance vaut
+`1,69002` contre `2,25085` pour l'uniforme, delta `-0,56084`, IC temporel
+`[-0,84946 ; -0,33202]`, p-value brute `0,000500` et p-value corrigee sur les deux cibles
+`0,001000`. Le modele jackpot, le modele combine et les ensembles explores ont ete rejetes comme
+remplacements lorsqu'ils ne passaient pas leurs controles corriges.
+
+La grille sans mise figee pour le 3 aout est `33 42 43 44 45`, Chance `3`. Son score marginal
+attendu vaut `0,52100`, soit une perte de `0,00441` face au Top-5 pur. Sa popularite principale
+ponctuelle vaut `0,24303` et sa borne conservatrice `0,29434`, contre `0,81592` pour le Top-5.
+Evaluee avec le meme modele, la grille v0.20 aurait une borne `0,30876`; v0.22 la reduit de
+`4,67 %` tout en sacrifiant moins de score marginal. Le numero Chance reste `3` car cette cible
+n'apporte aucune validation suffisante pour le remplacer.
+Cohorte de foule : `d16157d6de3d4cf94beb79fc07049eab0d64907eb964e3721a4ec4e7d883e3d4`.
+Tete de foule : `358b4a959fd8f694f030fdcfb79f73e8259025a20841ca5a39ba99c73de7fe73`.
+Cohorte de numeros : `1378a3a51d6a701bcb213c2bc440b9cc01c184f02f02b939b274ea3639bdd4cb`.
+Tete des numeros : `72e7d8efab3d809f418eae04e8dca2759e114094bbbd0ddc0bd418bad463b42f`.
+Empreinte du bundle de foule :
+`db9ac90018768b2bfab2790ca1490d2a6b7473fa07effe83cb6b8145f866d4b9`. Empreinte du bundle
+des numeros : `470d9c12f2187c8c76f830e4e77fb7fe07def11e3f5d8f782630951ab754bfeb`.

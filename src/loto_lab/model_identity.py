@@ -101,6 +101,7 @@ def build_number_model_specification(
     popularity_block_size: int = 12,
     popularity_bootstrap_models: int = 100,
     popularity_uncertainty_quantile: float = 0.9,
+    popularity_target: str = "main_combination",
 ) -> dict[str, object]:
     specification: dict[str, object] = {
         "format": NUMBER_MODEL_SPECIFICATION_FORMAT,
@@ -124,6 +125,7 @@ def build_number_model_specification(
             "popularity_block_size": popularity_block_size,
             "popularity_bootstrap_models": popularity_bootstrap_models,
             "popularity_uncertainty_quantile": popularity_uncertainty_quantile,
+            "popularity_target": popularity_target,
         },
     }
     return {**specification, "sha256": _digest(specification)}
@@ -139,6 +141,7 @@ def build_popularity_model_specification(
     seed: int,
     bootstrap_models: int,
     uncertainty_quantile: float,
+    target: str = "jackpot",
 ) -> dict[str, object]:
     specification: dict[str, object] = {
         "format": POPULARITY_MODEL_SPECIFICATION_FORMAT,
@@ -158,6 +161,7 @@ def build_popularity_model_specification(
             "seed": seed,
             "bootstrap_models": bootstrap_models,
             "uncertainty_quantile": uncertainty_quantile,
+            "target": target,
         },
     }
     return {**specification, "sha256": _digest(specification)}
