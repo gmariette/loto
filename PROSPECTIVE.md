@@ -220,3 +220,12 @@ restent toutes deux `insufficient_data`. Tetes append-only :
 Empreintes des bundles :
 `b3f3c9394761bff41fea920be123603c6abef6c3572796dd3d8718d5b6f98ffc` et
 `221e520a8bd4d8eed200a837559120627a9db24583564b246c6d5a1dc818d285`.
+
+A 17 h 24, heure de Paris, le meme challenger a aussi ete fige avant le tirage du 3 aout, sans
+remplacer les previsions precedentes : `1 42 43 44 45`, Chance `3`. Sa borne de popularite vaut
+`0,28211`, contre `0,98131` pour le Top-5 pur. Tetes append-only :
+`0d5a9732bb72268734342368faf55edb9c553ccd53192d01c2b0db9d234c392a` pour la foule et
+`e1fad88b62198d87718ba81cebf439ad641e2abff8747a483b2a6758d4269032` pour les numeros.
+Empreintes des bundles avant tirage :
+`c5c6e86349083ef27d283c68b5015f6ae441837b3d1495c12cdc5329ba72f575` et
+`03cb68727a5ce0eae54ff33fc919ef1e465525bd1853e65597343ea69108f95f`.
