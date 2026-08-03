@@ -130,7 +130,33 @@ def _as_iso_date(value: object, field: str) -> str:
     raise ValueError(f"Date {field} manquante")
 
 
-def _validate_numbers_prediction(prediction: dict[str, object]) -> tuple[list[int], int]:
+def _chance_to_record(prediction: dict[str, object]) -> tuple[int, str]:
+    """Numero Chance effectivement joue, avec son statut scientifique.
+
+    Le registre consigne la grille physiquement jouee, mais un Chance issu d'un
+    modele non qualifie n'est jamais consigne comme une prediction: il n'est
+    accepte que sous un statut `forced_experimental` explicite.
+    """
+    raw_chance = prediction.get("chance")
+    if raw_chance is not None:
+        return int(raw_chance), "qualified"
+    if prediction.get("status") != "forced_experimental":
+        raise ValueError(
+            "Le modele Chance s'abstient: seule une sortie explicitement "
+            "experimentale peut consigner un numero Chance"
+        )
+    chance_prediction = prediction.get("chance_prediction")
+    if not isinstance(chance_prediction, dict):
+        raise ValueError("Distribution Chance manquante")
+    experimental = chance_prediction.get("experimental")
+    if not isinstance(experimental, dict) or experimental.get("number") is None:
+        raise ValueError("Numero Chance experimental manquant")
+    return int(experimental["number"]), "forced_experimental"
+
+
+def _validate_numbers_prediction(
+    prediction: dict[str, object],
+) -> tuple[list[int], int, str]:
     if prediction.get("status") not in ("qualified", "forced_experimental"):
         raise ValueError("Seule une grille explicite peut etre enregistree")
     raw_main = prediction.get("numbers")
@@ -141,10 +167,10 @@ def _validate_numbers_prediction(prediction: dict[str, object]) -> tuple[list[in
         raise ValueError("La grille doit contenir cinq numeros distincts")
     if any(number < 1 or number > DEFAULT_RULES.main_pool for number in main):
         raise ValueError("Numero principal hors limites")
-    chance = int(prediction.get("chance", 0))
+    chance, chance_status = _chance_to_record(prediction)
     if chance < 1 or chance > DEFAULT_RULES.chance_pool:
         raise ValueError("Numero Chance hors limites")
-    return sorted(main), chance
+    return sorted(main), chance, chance_status
 
 
 def _forecast_hash(row: dict[str, object]) -> str:
@@ -219,7 +245,7 @@ def record_number_forecast(
 ) -> dict[str, object]:
     cohort = validate_number_model_specification(model_specification)
     _validate_data_provenance(provenance.get("data"))
-    main, chance = _validate_numbers_prediction(prediction)
+    main, chance, chance_status = _validate_numbers_prediction(prediction)
     game = str(prediction.get("game", ""))
     model = str(prediction.get("model", ""))
     if not game or not model:
@@ -297,6 +323,7 @@ def record_number_forecast(
             "target_date": target_date,
             "main": main,
             "chance": chance,
+            "chance_status": chance_status,
             "previous_hash": row["previous_hash"],
             "record_hash": record_hash,
         }

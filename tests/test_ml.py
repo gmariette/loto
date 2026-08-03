@@ -1,15 +1,18 @@
 import random
 import unittest
 from datetime import date, timedelta
+from itertools import combinations
 
 import numpy as np
 
-from loto_lab.domain import Draw
+from loto_lab.domain import DEFAULT_RULES, Draw
 from loto_lab.ml import (
-    FEATURE_NAMES,
+    DEFAULT_MODELS,
+    MODEL_PARAMETERS,
+    RANKING_MODELS,
+    _expected_top5_hits,
     _fit_predict,
     _holm_values,
-    _ranking_indices,
     _top5_indices,
     _top5_inference,
     blend_with_uniform,
@@ -18,6 +21,7 @@ from loto_lab.ml import (
     next_feature_matrix,
     predict_next_draw,
     project_inclusion_probabilities,
+    top5_selection,
 )
 
 
@@ -34,6 +38,23 @@ def dated_random_draws(count: int, seed: int = 4) -> list[Draw]:
     ]
 
 
+def biased_draws(count: int, seed: int = 11) -> list[Draw]:
+    """Sequence synthetique ou cinq numeros sortent bien plus souvent que l'uniforme.
+
+    Sert de controle positif: un backtest correct doit detecter ce signal.
+    """
+    rng = random.Random(seed)
+    hot = [1, 2, 3, 4, 5]
+    start = date(2020, 1, 1)
+    draws = []
+    for index in range(count):
+        chosen = set(rng.sample(hot, 4))
+        while len(chosen) < 5:
+            chosen.add(rng.randint(1, 49))
+        draws.append(Draw(tuple(sorted(chosen)), rng.randint(1, 10), start + timedelta(days=index)))
+    return draws
+
+
 class MLTests(unittest.TestCase):
     def test_projection_sums_to_five(self) -> None:
         projected = project_inclusion_probabilities(np.linspace(0.01, 0.8, 49))
@@ -45,34 +66,92 @@ class MLTests(unittest.TestCase):
         blended = blend_with_uniform(probabilities, 0.0)
         np.testing.assert_allclose(blended, 5 / 49)
 
-    def test_uniform_ties_have_seeded_random_ranking(self) -> None:
+    def test_top5_selection_is_deterministic_and_flags_ties(self) -> None:
         probabilities = np.full(49, 5 / 49)
-        first = _top5_indices(probabilities, np.random.default_rng(42))
-        second = _top5_indices(probabilities, np.random.default_rng(42))
-        np.testing.assert_array_equal(first, second)
-        self.assertEqual(len(set(first)), 5)
+        self.assertEqual(_top5_indices(probabilities).tolist(), [0, 1, 2, 3, 4])
+        selection = top5_selection(probabilities)
+        self.assertEqual(selection["numbers"], (1, 2, 3, 4, 5))
+        self.assertEqual(selection["certain_numbers"], ())
+        self.assertEqual(len(selection["tied_candidates"]), 49)
+        self.assertTrue(selection["selection_is_tied"])
 
-    def test_hierarchical_ranker_uses_gap_only_for_primary_ties(self) -> None:
-        probabilities = np.zeros(49)
-        probabilities[:6] = 1.0
-        features = np.zeros((49, len(FEATURE_NAMES)))
-        features[:6, FEATURE_NAMES.index("normalized_gap")] = np.arange(6)
-        selected = _ranking_indices(
-            probabilities,
-            np.random.default_rng(42),
-            "hierarchical_ridge_ranker",
-            features,
-        )
-        self.assertEqual(set(selected), {1, 2, 3, 4, 5})
+    def test_top5_selection_reports_an_unambiguous_ranking(self) -> None:
+        probabilities = np.linspace(0.01, 0.5, 49)
+        selection = top5_selection(probabilities)
+        self.assertEqual(selection["numbers"], (45, 46, 47, 48, 49))
+        self.assertEqual(selection["certain_numbers"], (46, 47, 48, 49))
+        self.assertEqual(selection["tied_candidates"], (45,))
+        self.assertFalse(selection["selection_is_tied"])
+
+    def test_expected_hits_resolve_ties_without_a_random_seed(self) -> None:
+        # Quatre numeros certains et quatre ex aequo pour la derniere place.
+        probabilities = np.zeros((1, 49))
+        probabilities[0, :4] = 1.0
+        probabilities[0, 4:8] = 0.5
+        actual = np.zeros((1, 49))
+        actual[0, [0, 1, 2, 3, 4]] = 1.0
+        hits = _expected_top5_hits(probabilities, actual)
+        # 4 certains + 1 place restante partagee entre 4 ex aequo dont 1 gagnant.
+        self.assertAlmostEqual(float(hits[0]), 4 + 1 / 4)
+
+    def test_expected_hits_match_exact_counts_without_ties(self) -> None:
+        probabilities = np.linspace(0.01, 0.5, 49)[np.newaxis, :]
+        actual = np.zeros((1, 49))
+        actual[0, [48, 47, 0, 1, 2]] = 1.0
+        self.assertAlmostEqual(float(_expected_top5_hits(probabilities, actual)[0]), 2.0)
 
     def test_top5_inference_detects_large_hit_uplift(self) -> None:
+        hits = np.full(100, 5.0)
+        structure = (
+            np.full(100, DEFAULT_RULES.main_drawn - 1),
+            np.ones(100, dtype=int),
+            np.ones(100, dtype=int),
+        )
         uplift, low, high, p_value = _top5_inference(
-            np.full(100, 5.0), simulations=100, seed=42
+            hits, structure, simulations=100, seed=42, block_size=4
         )
         self.assertGreater(uplift, 0)
         self.assertGreater(low, 0)
         self.assertGreater(high, 0)
         self.assertLess(p_value, 0.05)
+
+    def test_top5_null_distribution_is_centred_on_the_uniform_expectation(self) -> None:
+        from loto_lab.ml import _top5_null_means
+
+        means = _top5_null_means(
+            np.full(200, 4),
+            np.ones(200, dtype=int),
+            np.ones(200, dtype=int),
+            400,
+            np.random.default_rng(1),
+        )
+        self.assertAlmostEqual(float(means.mean()), 25 / 49, places=2)
+
+    def test_no_default_model_is_a_pure_duplicate(self) -> None:
+        """Deux modeles ne peuvent coexister que s'ils different vraiment.
+
+        `hierarchical_ridge_ranker` produisait des probabilites bit-a-bit
+        identiques a `rolling_ridge_ranker` avec la meme grille et le meme
+        objectif de selection: il gonflait la famille de Holm sans rien apporter.
+        """
+        dataset = build_feature_dataset(dated_random_draws(120), min_history=20)
+        predictions: dict[str, bytes] = {}
+        for model in DEFAULT_MODELS:
+            parameters = {**MODEL_PARAMETERS[model][0], "uniform_blend": 1.0}
+            predicted = _fit_predict(
+                model, parameters, dataset.x[:60], dataset.y[:60], dataset.x[60:70], 0
+            )
+            predictions[model] = np.round(predicted, 12).tobytes()
+        for left, right in combinations(DEFAULT_MODELS, 2):
+            if predictions[left] != predictions[right]:
+                continue
+            self.assertNotEqual(
+                (MODEL_PARAMETERS[left], left in RANKING_MODELS),
+                (MODEL_PARAMETERS[right], right in RANKING_MODELS),
+                f"{left} et {right} sont indiscernables: memes probabilites, meme "
+                "grille et meme objectif de selection",
+            )
+        self.assertNotIn("hierarchical_ridge_ranker", MODEL_PARAMETERS)
 
     def test_holm_adjustment_is_monotone(self) -> None:
         adjusted = _holm_values([0.01, 0.02, 0.5])
@@ -245,18 +324,61 @@ class MLTests(unittest.TestCase):
             draws, results, date(2021, 1, 1), force=True, seed=42
         )
         self.assertEqual(first["numbers"], second["numbers"])
+        self.assertEqual(first["chance"], second["chance"])
 
-    def test_hierarchical_ridge_participates_in_nested_selection(self) -> None:
+    def test_ranking_metric_does_not_depend_on_the_seed(self) -> None:
+        draws = dated_random_draws(180)
+        common = {
+            "min_history": 20,
+            "min_train": 60,
+            "outer_folds": 2,
+            "simulations": 100,
+            "models": ("rolling_ridge_ranker",),
+        }
+        first = nested_ml_backtest(draws, seed=0, **common)[0]
+        second = nested_ml_backtest(draws, seed=123, **common)[0]
+        self.assertEqual(first.mean_top5_hits, second.mean_top5_hits)
+
+    def test_marginal_probabilities_cover_all_numbers_and_sum_to_five(self) -> None:
+        draws = dated_random_draws(180)
         results = nested_ml_backtest(
-            dated_random_draws(180),
+            draws,
             min_history=20,
             min_train=60,
             outer_folds=2,
             simulations=100,
-            models=("hierarchical_ridge_ranker",),
+            models=("ridge_ranker",),
         )
-        self.assertEqual(results[0].model, "hierarchical_ridge_ranker")
-        self.assertIn(results[0].final_parameters["alpha"], (0.1, 1.0, 10.0, 100.0, 1000.0))
+        prediction = predict_next_draw(
+            draws, results, date(2021, 1, 1), force=True, seed=0
+        )
+        marginals = prediction["marginal_probabilities"]
+        self.assertEqual(sorted(marginals), list(range(1, 50)))
+        self.assertAlmostEqual(sum(marginals.values()), 5.0, places=9)
+        self.assertAlmostEqual(prediction["marginal_probability_sum"], 5.0, places=9)
+
+    def test_forced_prediction_abstains_on_the_chance_number(self) -> None:
+        draws = dated_random_draws(180)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=60,
+            outer_folds=2,
+            simulations=100,
+            models=("ridge_ranker",),
+        )
+        prediction = predict_next_draw(
+            draws, results, date(2021, 1, 1), force=True, seed=0
+        )
+        self.assertIsNone(prediction["chance"])
+        self.assertEqual(prediction["chance_status"], "abstention")
+        published = prediction["chance_prediction"]["probabilities"]
+        self.assertEqual(len(published), 10)
+        for probability in published.values():
+            self.assertEqual(probability, 0.1)
+        self.assertIsNotNone(
+            prediction["chance_prediction"]["experimental"]["number"]
+        )
 
     def test_backtest_as_of_matches_physically_truncated_history(self) -> None:
         draws = dated_random_draws(190)
@@ -332,6 +454,39 @@ class MLTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "posterieure"):
             predict_next_draw(draws, results, draws[-1].draw_date, force=True)
+
+    def test_backtest_detects_a_synthetic_predictable_sequence(self) -> None:
+        results = nested_ml_backtest(
+            biased_draws(300),
+            min_history=20,
+            min_train=100,
+            outer_folds=2,
+            simulations=300,
+            models=("bayesian",),
+        )
+        result = results[0]
+        self.assertGreater(result.mean_top5_hits, 3.0)
+        self.assertGreater(result.top5_ci_low, 0)
+        self.assertLess(result.mean_brier_delta, 0)
+        self.assertLess(result.delta_ci_high, 0)
+        self.assertTrue(result.qualified)
+
+    def test_backtest_abstains_on_an_iid_uniform_sequence(self) -> None:
+        draws = dated_random_draws(400, seed=99)
+        results = nested_ml_backtest(
+            draws,
+            min_history=20,
+            min_train=150,
+            outer_folds=2,
+            simulations=300,
+        )
+        for result in results:
+            self.assertFalse(
+                result.qualified,
+                f"{result.model} pretend battre l'uniforme sur une sequence IID",
+            )
+        prediction = predict_next_draw(draws, results, date(2022, 1, 1))
+        self.assertEqual(prediction["status"], "abstention")
 
     def test_next_features_ignore_draws_on_or_after_target(self) -> None:
         draws = dated_random_draws(80)

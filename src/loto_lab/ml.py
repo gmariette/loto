@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import random
 from collections import deque
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from itertools import groupby
-from math import cos, log1p, pi, sin
+from math import ceil, cos, log1p, pi, sin
 from typing import Any
 
 import numpy as np
@@ -14,6 +13,7 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from .chance_ml import ChanceMLBacktestResult, predict_chance
 from .domain import DEFAULT_RULES, Draw, LotteryRules
 from .popularity import PopularityPredictor, optimize_value_aware_ticket
 
@@ -225,9 +225,6 @@ MODEL_PARAMETERS: dict[str, tuple[dict[str, float | int], ...]] = {
     "rolling_ridge_ranker": tuple(
         {"alpha": alpha} for alpha in (0.1, 1.0, 10.0, 100.0, 1000.0)
     ),
-    "hierarchical_ridge_ranker": tuple(
-        {"alpha": alpha} for alpha in (0.1, 1.0, 10.0, 100.0, 1000.0)
-    ),
     "gradient_boosting": (
         {"learning_rate": 0.03, "max_leaf_nodes": 7, "l2": 1.0},
         {"learning_rate": 0.05, "max_leaf_nodes": 15, "l2": 5.0},
@@ -242,10 +239,18 @@ MODEL_SEED_OFFSETS = {
     "logistic_ranker": 40_000,
     "ridge_ranker": 50_000,
     "rolling_ridge_ranker": 60_000,
-    "hierarchical_ridge_ranker": 70_000,
 }
 
+RANKING_MODELS = (
+    "logistic_ranker",
+    "ridge_ranker",
+    "rolling_ridge_ranker",
+)
 UNIFORM_BLEND_WEIGHTS = (0.0, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
+# `hierarchical_ridge_ranker` a ete retire en v0.27: ses predictions etaient
+# bit-a-bit identiques a `rolling_ridge_ranker` (memes variables, meme estimateur,
+# meme grille). Seule sa regle de departage differait, ce qui ne produisait aucun
+# signal mais gonflait la famille de tests de Holm.
 DEFAULT_MODELS = (
     "bayesian",
     "rolling_bayesian",
@@ -254,8 +259,8 @@ DEFAULT_MODELS = (
     "logistic_ranker",
     "ridge_ranker",
     "rolling_ridge_ranker",
-    "hierarchical_ridge_ranker",
 )
+TIE_TOLERANCE = 1e-12
 
 
 def blend_with_uniform(probabilities: np.ndarray, weight: float) -> np.ndarray:
@@ -287,12 +292,8 @@ def _fit_predict(
         frequencies = x_test[:, :, feature_index] + (5 / 49)
         prior = float(parameters["prior_strength"])
         raw = (frequencies * history + prior * (5 / 49)) / (history + prior)
-    elif model_name in (
-        "ridge_ranker",
-        "rolling_ridge_ranker",
-        "hierarchical_ridge_ranker",
-    ):
-        if model_name in ("rolling_ridge_ranker", "hierarchical_ridge_ranker"):
+    elif model_name in ("ridge_ranker", "rolling_ridge_ranker"):
+        if model_name == "rolling_ridge_ranker":
             feature_indices = [
                 FEATURE_NAMES.index(f"frequency_{window}_delta")
                 for window in (10, 50, 200)
@@ -350,12 +351,23 @@ def _log_loss(probabilities: np.ndarray, actual: np.ndarray) -> float:
 
 
 def _calibration_error(probabilities: np.ndarray, actual: np.ndarray, bins: int = 10) -> float:
+    """Erreur de calibration esperee sur des bacs de quantiles.
+
+    Les probabilites d'inclusion vivent toutes autour de 5/49; des bacs fixes sur
+    [0, 1] les rassembleraient dans un seul bac et ne mesureraient qu'un biais
+    global au lieu d'une courbe de calibration.
+    """
     flat_p = probabilities.ravel()
     flat_y = actual.ravel()
-    edges = np.linspace(0, 1, bins + 1)
+    edges = np.unique(np.quantile(flat_p, np.linspace(0, 1, bins + 1)))
+    if len(edges) < 2:
+        return 0.0
+    assignment = np.clip(
+        np.searchsorted(edges, flat_p, side="left") - 1, 0, len(edges) - 2
+    )
     error = 0.0
-    for lower, upper in zip(edges[:-1], edges[1:], strict=True):
-        mask = (flat_p >= lower) & (flat_p < upper if upper < 1 else flat_p <= upper)
+    for index in range(len(edges) - 1):
+        mask = assignment == index
         if mask.any():
             error += mask.mean() * abs(float(flat_p[mask].mean() - flat_y[mask].mean()))
     return float(error)
@@ -385,6 +397,10 @@ class MLBacktestResult:
     top5_ci_high: float
     top5_p_value: float
     adjusted_top5_p_value: float
+    validation_brier: float
+    validation_top5_hits: float
+    tied_selection_draws: int
+    block_size: int
     probability_qualified: bool
     ranking_qualified: bool
     qualification_basis: str
@@ -394,26 +410,69 @@ class MLBacktestResult:
         return asdict(self)
 
 
+def _top5_structure(probabilities: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Decompose chaque ligne en `au-dessus du seuil` et `ex aequo au seuil`.
+
+    Le seuil est la cinquieme plus grande probabilite. Les numeros strictement
+    superieurs sont toujours retenus; les ex aequo se partagent les places
+    restantes.
+    """
+    threshold = np.sort(probabilities, axis=1)[:, -DEFAULT_RULES.main_drawn][:, np.newaxis]
+    above = probabilities > threshold + TIE_TOLERANCE
+    tied = np.abs(probabilities - threshold) <= TIE_TOLERANCE
+    return above, tied, DEFAULT_RULES.main_drawn - above.sum(axis=1)
+
+
+def _expected_top5_hits(probabilities: np.ndarray, actual: np.ndarray) -> np.ndarray:
+    """Nombre attendu de bons numeros, ex aequo resolus uniformement.
+
+    Un departage aleatoire rendrait la metrique dependante de la graine: sur
+    l'archive reelle, 13,6 % des tirages ont un ex aequo a la cinquieme place et
+    l'uplift publie variait de +0,0258 a +0,0302 selon la seule graine. L'esperance
+    est deterministe et sans biais.
+    """
+    above, tied, remaining = _top5_structure(probabilities)
+    winners = actual > 0
+    return (above & winners).sum(axis=1) + remaining * (tied & winners).sum(axis=1) / tied.sum(
+        axis=1
+    )
+
+
+def _moving_block_means(
+    values: np.ndarray, simulations: int, block_size: int, rng: np.random.Generator
+) -> np.ndarray:
+    effective_block = min(block_size, len(values))
+    blocks_needed = ceil(len(values) / effective_block)
+    means = []
+    for _ in range(simulations):
+        starts = rng.integers(0, len(values) - effective_block + 1, size=blocks_needed)
+        sample = np.concatenate(
+            [values[start : start + effective_block] for start in starts]
+        )[: len(values)]
+        means.append(float(sample.mean()))
+    return np.asarray(means)
+
+
 def _select_parameters(
     dataset: FeatureDataset,
     model_name: str,
     train_indices: np.ndarray,
     seed: int,
-) -> dict[str, float | int]:
+) -> tuple[dict[str, float | int], float, float]:
+    """Choisit les hyperparametres sur la fin du passe d'entrainement seulement.
+
+    Renvoie aussi le Brier et les hits Top-5 de validation interne, qui servent a
+    departager les modeles sans jamais consulter le fold de test.
+    """
     train_dates = np.unique(dataset.dates[train_indices])
     validation_dates = train_dates[max(1, int(len(train_dates) * 0.8)) :]
     if len(validation_dates) < 1:
-        return MODEL_PARAMETERS[model_name][0]
+        return dict(MODEL_PARAMETERS[model_name][0]), float("nan"), float("nan")
     split_date = validation_dates[0]
     inner_train = train_indices[dataset.dates[train_indices] < split_date]
     validation = train_indices[dataset.dates[train_indices] >= split_date]
-    ranking_objective = model_name in (
-        "logistic_ranker",
-        "ridge_ranker",
-        "rolling_ridge_ranker",
-        "hierarchical_ridge_ranker",
-    )
-    best: tuple[tuple[float, float], dict[str, float | int]] | None = None
+    ranking_objective = model_name in RANKING_MODELS
+    best: tuple[tuple[float, float], dict[str, float | int], float, float] | None = None
     for model_parameters in MODEL_PARAMETERS[model_name]:
         raw_predicted = _fit_predict(
             model_name,
@@ -427,50 +486,35 @@ def _select_parameters(
         for blend_weight in blend_weights:
             predicted = blend_with_uniform(raw_predicted, blend_weight)
             brier = float(_brier_by_draw(predicted, dataset.y[validation]).mean())
-            if ranking_objective:
-                ranking_rng = np.random.default_rng(seed)
-                mean_hits = float(
-                    np.mean(
-                        [
-                            len(
-                                set(
-                                    _ranking_indices(
-                                        row,
-                                        ranking_rng,
-                                        model_name,
-                                        dataset.x[validation][row_index],
-                                    )
-                                ).intersection(
-                                    np.flatnonzero(target)
-                                )
-                            )
-                            for row_index, (row, target) in enumerate(
-                                zip(predicted, dataset.y[validation], strict=True)
-                            )
-                        ]
-                    )
-                )
-                objective = (-mean_hits, brier)
-            else:
-                objective = (brier, 0.0)
+            mean_hits = float(
+                _expected_top5_hits(predicted, dataset.y[validation]).mean()
+            )
+            objective = (-mean_hits, brier) if ranking_objective else (brier, -mean_hits)
             parameters = {**model_parameters, "uniform_blend": blend_weight}
             if best is None or objective < best[0]:
-                best = (objective, parameters)
+                best = (objective, parameters, brier, mean_hits)
     assert best is not None
-    return dict(best[1])
+    return dict(best[1]), best[2], best[3]
 
 
 def _confidence_and_permutation(
-    deltas: np.ndarray, simulations: int, seed: int
+    deltas: np.ndarray, simulations: int, seed: int, block_size: int
 ) -> tuple[float, float, float]:
+    """Intervalle et p-value par blocs mobiles.
+
+    Les deltas par tirage sont serialement dependants (memes variables glissantes
+    d'un tirage a l'autre); un bootstrap IID sous-estimerait la largeur.
+    """
     rng = np.random.default_rng(seed)
-    bootstrap = np.asarray(
-        [rng.choice(deltas, size=len(deltas), replace=True).mean() for _ in range(simulations)]
-    )
+    bootstrap = _moving_block_means(deltas, simulations, block_size, rng)
     observed = float(deltas.mean())
+    effective_block = min(block_size, len(deltas))
+    blocks_needed = ceil(len(deltas) / effective_block)
     extreme = 0
     for _ in range(simulations):
-        signs = rng.choice((-1.0, 1.0), size=len(deltas))
+        signs = np.repeat(rng.choice((-1.0, 1.0), size=blocks_needed), effective_block)[
+            : len(deltas)
+        ]
         if float((deltas * signs).mean()) <= observed:
             extreme += 1
     return (
@@ -480,22 +524,51 @@ def _confidence_and_permutation(
     )
 
 
+def _top5_null_means(
+    above_counts: np.ndarray,
+    tied_counts: np.ndarray,
+    remaining: np.ndarray,
+    simulations: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Loi nulle exacte de l'esperance de hits pour un tirage uniforme de 5 boules.
+
+    Pour une ligne donnee, `|W inter au-dessus| + (restant / ex aequo) *
+    |W inter ex aequo|` suit une loi hypergeometrique multivariee; les lignes sont
+    regroupees par structure d'ex aequo pour la vectoriser.
+    """
+    pool = DEFAULT_RULES.main_pool
+    drawn = DEFAULT_RULES.main_drawn
+    totals = np.zeros(simulations, dtype=float)
+    structures = np.stack((above_counts, tied_counts, remaining), axis=1)
+    unique, inverse = np.unique(structures, axis=0, return_inverse=True)
+    for index, (above, tied, left) in enumerate(unique):
+        count = int(np.count_nonzero(inverse == index))
+        colors = [int(above), int(tied), pool - int(above) - int(tied)]
+        for start in range(0, simulations, 200):
+            chunk = min(200, simulations - start)
+            sampled = rng.multivariate_hypergeometric(
+                colors, drawn, size=chunk * count
+            ).reshape(chunk, count, 3)
+            totals[start : start + chunk] += (
+                sampled[:, :, 0] + left * sampled[:, :, 1] / max(int(tied), 1)
+            ).sum(axis=1)
+    return totals / len(above_counts)
+
+
 def _top5_inference(
-    hits: np.ndarray, simulations: int, seed: int
+    hits: np.ndarray,
+    structure: tuple[np.ndarray, np.ndarray, np.ndarray],
+    simulations: int,
+    seed: int,
+    block_size: int,
 ) -> tuple[float, float, float, float]:
     expected = DEFAULT_RULES.main_drawn**2 / DEFAULT_RULES.main_pool
     uplifts = np.asarray(hits, dtype=float) - expected
     rng = np.random.default_rng(seed)
-    bootstrap = np.asarray(
-        [rng.choice(uplifts, size=len(uplifts), replace=True).mean() for _ in range(simulations)]
-    )
+    bootstrap = _moving_block_means(uplifts, simulations, block_size, rng)
     observed = float(uplifts.mean())
-    null_means = rng.hypergeometric(
-        DEFAULT_RULES.main_drawn,
-        DEFAULT_RULES.main_pool - DEFAULT_RULES.main_drawn,
-        DEFAULT_RULES.main_drawn,
-        size=(simulations, len(hits)),
-    ).mean(axis=1)
+    null_means = _top5_null_means(*structure, simulations, rng)
     p_value = (int(np.count_nonzero(null_means - expected >= observed)) + 1) / (
         simulations + 1
     )
@@ -507,24 +580,28 @@ def _top5_inference(
     )
 
 
-def _top5_indices(probabilities: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    tie_breakers = rng.random(len(probabilities))
-    return np.lexsort((tie_breakers, probabilities))[-DEFAULT_RULES.main_drawn :]
+def _top5_indices(probabilities: np.ndarray) -> np.ndarray:
+    """Cinq meilleurs indices, ex aequo departages par numero croissant.
+
+    Le departage est deterministe et documente: il ne doit jamais etre presente
+    comme une sortie du modele, d'ou `top5_selection` qui expose les ex aequo.
+    """
+    return np.sort(np.argsort(-probabilities, kind="stable")[: DEFAULT_RULES.main_drawn])
 
 
-def _ranking_indices(
-    probabilities: np.ndarray,
-    rng: np.random.Generator,
-    model_name: str,
-    feature_row: np.ndarray,
-) -> np.ndarray:
-    if model_name == "hierarchical_ridge_ranker":
-        tie_breakers = rng.random(len(probabilities))
-        gaps = feature_row[:, FEATURE_NAMES.index("normalized_gap")]
-        return np.lexsort((tie_breakers, gaps, probabilities))[
-            -DEFAULT_RULES.main_drawn :
-        ]
-    return _top5_indices(probabilities, rng)
+def top5_selection(probabilities: np.ndarray) -> dict[str, object]:
+    """Selection Top-5 accompagnee de sa structure d'ex aequo."""
+    row = np.asarray(probabilities, dtype=float)[np.newaxis, :]
+    above, tied, remaining = _top5_structure(row)
+    tied_candidates = np.flatnonzero(tied[0]) + 1
+    return {
+        "numbers": tuple(int(index + 1) for index in _top5_indices(row[0])),
+        "certain_numbers": tuple(int(index + 1) for index in np.flatnonzero(above[0])),
+        "tied_candidates": tuple(int(number) for number in tied_candidates),
+        "tied_slots": int(remaining[0]),
+        "selection_is_tied": bool(len(tied_candidates) > int(remaining[0])),
+        "tie_break_rule": "smallest_number_first",
+    }
 
 
 def _backtest_one_model(
@@ -534,6 +611,7 @@ def _backtest_one_model(
     outer_folds: int,
     simulations: int,
     seed: int,
+    block_size: int,
 ) -> MLBacktestResult:
     if dataset.draw_count <= min_train:
         raise ValueError("Pas assez de tirages pour le backtest ML")
@@ -541,14 +619,19 @@ def _backtest_one_model(
     date_folds = [fold for fold in np.array_split(eligible_dates, outer_folds) if len(fold)]
     predictions: list[np.ndarray] = []
     actuals: list[np.ndarray] = []
-    feature_rows: list[np.ndarray] = []
     selected: list[dict[str, float | int]] = []
+    validation_briers: list[float] = []
+    validation_hits: list[float] = []
 
     for fold_number, test_dates in enumerate(date_folds):
         train_indices = np.flatnonzero(dataset.dates < test_dates[0])
         test_indices = np.flatnonzero(np.isin(dataset.dates, test_dates))
-        parameters = _select_parameters(dataset, model_name, train_indices, seed + fold_number)
+        parameters, inner_brier, inner_hits = _select_parameters(
+            dataset, model_name, train_indices, seed + fold_number
+        )
         selected.append(parameters)
+        validation_briers.append(inner_brier)
+        validation_hits.append(inner_hits)
         predictions.append(
             _fit_predict(
                 model_name,
@@ -560,41 +643,26 @@ def _backtest_one_model(
             )
         )
         actuals.append(dataset.y[test_indices])
-        feature_rows.append(dataset.x[test_indices])
 
     predicted = np.concatenate(predictions)
     actual = np.concatenate(actuals)
-    ranking_features = np.concatenate(feature_rows)
     baseline = np.full_like(predicted, 5 / 49)
     scores = _brier_by_draw(predicted, actual)
     baseline_scores = _brier_by_draw(baseline, actual)
     deltas = scores - baseline_scores
-    ci_low, ci_high, p_value = _confidence_and_permutation(deltas, simulations, seed)
-    ranking_rng = np.random.default_rng(seed)
-    hits = np.asarray(
-        [
-            len(
-                set(
-                    _ranking_indices(
-                        row,
-                        ranking_rng,
-                        model_name,
-                        feature_row,
-                    )
-                ).intersection(
-                    np.flatnonzero(target)
-                )
-            )
-            for row, target, feature_row in zip(
-                predicted, actual, ranking_features, strict=True
-            )
-        ],
-        dtype=float,
+    ci_low, ci_high, p_value = _confidence_and_permutation(
+        deltas, simulations, seed, block_size
     )
+    above, tied, remaining = _top5_structure(predicted)
+    hits = _expected_top5_hits(predicted, actual)
     top5_uplift, top5_low, top5_high, top5_p_value = _top5_inference(
-        hits, simulations, seed + 1
+        hits,
+        (above.sum(axis=1), tied.sum(axis=1), remaining),
+        simulations,
+        seed + 1,
+        block_size,
     )
-    final = _select_parameters(
+    final, _, _ = _select_parameters(
         dataset, model_name, np.arange(dataset.draw_count), seed + outer_folds
     )
     return MLBacktestResult(
@@ -622,6 +690,10 @@ def _backtest_one_model(
         top5_ci_high=top5_high,
         top5_p_value=top5_p_value,
         adjusted_top5_p_value=1.0,
+        validation_brier=float(np.nanmean(validation_briers)),
+        validation_top5_hits=float(np.nanmean(validation_hits)),
+        tied_selection_draws=int(np.count_nonzero(tied.sum(axis=1) > remaining)),
+        block_size=min(block_size, len(deltas)),
         probability_qualified=False,
         ranking_qualified=False,
         qualification_basis="none",
@@ -685,9 +757,10 @@ def nested_ml_backtest(
     game: str | None = None,
     models: tuple[str, ...] = DEFAULT_MODELS,
     as_of: date | None = None,
+    block_size: int = 12,
 ) -> list[MLBacktestResult]:
-    if outer_folds < 2 or simulations < 100:
-        raise ValueError("Il faut au moins 2 folds et 100 simulations")
+    if outer_folds < 2 or simulations < 100 or block_size < 1:
+        raise ValueError("Il faut au moins 2 folds, 100 simulations et block_size >= 1")
     unknown = set(models).difference(MODEL_PARAMETERS)
     if unknown:
         raise ValueError(f"Modeles inconnus: {sorted(unknown)}")
@@ -711,10 +784,31 @@ def nested_ml_backtest(
             outer_folds,
             simulations,
             seed + MODEL_SEED_OFFSETS[model],
+            block_size,
         )
         for model in models
     ]
     return _holm_adjust(results)
+
+
+def _validation_summary(champion: MLBacktestResult) -> dict[str, object]:
+    return {
+        "test_draws": champion.test_draws,
+        "mean_brier_delta": champion.mean_brier_delta,
+        "delta_ci_low": champion.delta_ci_low,
+        "delta_ci_high": champion.delta_ci_high,
+        "adjusted_p_value": champion.adjusted_p_value,
+        "uniform_expected_top5_hits": champion.uniform_expected_top5_hits,
+        "mean_top5_hits": champion.mean_top5_hits,
+        "top5_hit_uplift": champion.top5_hit_uplift,
+        "top5_ci_low": champion.top5_ci_low,
+        "top5_ci_high": champion.top5_ci_high,
+        "adjusted_top5_p_value": champion.adjusted_top5_p_value,
+        "tied_selection_draws": champion.tied_selection_draws,
+        "block_size": champion.block_size,
+        "qualification_basis": champion.qualification_basis,
+        "qualified": champion.qualified,
+    }
 
 
 def predict_next_draw(
@@ -726,6 +820,8 @@ def predict_next_draw(
     seed: int = 0,
     popularity_predictor: PopularityPredictor | None = None,
     max_expected_hit_loss: float = 0.005,
+    chance_validation: ChanceMLBacktestResult | None = None,
+    min_history: int = 50,
 ) -> dict[str, object]:
     selected_draws = [draw for draw in draws if draw.game == game]
     if not selected_draws:
@@ -735,6 +831,9 @@ def predict_next_draw(
         raise ValueError("ml-predict exige une date posterieure au dernier tirage fourni")
     qualified = [result for result in results if result.qualified]
     status = "qualified"
+    # Le champion est departage sur la validation interne, anterieure a chaque fold
+    # de test. Utiliser l'uplift de test selectionnerait le gagnant sur la mesure
+    # meme qui est ensuite publiee comme sa validation (malediction du vainqueur).
     if not qualified:
         if not force:
             return {
@@ -747,17 +846,16 @@ def predict_next_draw(
                     "avec un intervalle a 95% et Holm < 5%."
                 ),
             }
-        qualified = list(results)
         status = "forced_experimental"
-        champion = max(qualified, key=lambda result: result.top5_hit_uplift)
+        champion = max(results, key=lambda result: result.validation_top5_hits)
     else:
         ranking_qualified = [result for result in qualified if result.ranking_qualified]
         champion = (
-            max(ranking_qualified, key=lambda result: result.top5_hit_uplift)
+            max(ranking_qualified, key=lambda result: result.validation_top5_hits)
             if ranking_qualified
-            else min(qualified, key=lambda result: result.mean_brier_delta)
+            else min(qualified, key=lambda result: result.validation_brier)
         )
-    dataset = build_feature_dataset(selected_draws)
+    dataset = build_feature_dataset(selected_draws, min_history)
     target = next_feature_matrix(selected_draws, target_date, game)
     predicted = _fit_predict(
         champion.model,
@@ -767,35 +865,47 @@ def predict_next_draw(
         target[np.newaxis, :, :],
         seed,
     )[0]
-    rng = random.Random(seed)
+    chance_prediction = predict_chance(
+        selected_draws,
+        target_date,
+        game,
+        validation=chance_validation,
+    )
+    chance = chance_prediction["number"]
+    # Le modele de popularite ignore le numero Chance: la valeur transmise ne sert
+    # qu'a construire un Ticket valide et n'influence aucune optimisation.
+    placeholder_chance = int(
+        chance
+        if chance is not None
+        else chance_prediction["experimental"]["number"]
+    )
+    selection = top5_selection(predicted)
     value_selection = None
+    if float(np.ptp(predicted)) < TIE_TOLERANCE:
+        return {
+            "status": "abstention",
+            "game": game,
+            "target_date": target_date,
+            "training_last_date": max(dated) if dated else None,
+            "model": champion.model,
+            "reason": (
+                "Le modele retenu produit 49 probabilites identiques: toute grille "
+                "serait un tirage arbitraire et non une prediction."
+            ),
+            "validation": _validation_summary(champion),
+            "probability_spread": float(np.ptp(predicted)),
+            "chance_prediction": chance_prediction,
+        }
     if popularity_predictor is not None:
-        chance = rng.randint(1, 10)
         value_selection = optimize_value_aware_ticket(
             predicted,
             popularity_predictor,
             max_expected_hit_loss=max_expected_hit_loss,
-            chance=chance,
+            chance=placeholder_chance,
         )
         top = value_selection.ticket.main
-        chance = value_selection.ticket.chance
-    elif float(np.ptp(predicted)) < 1e-12:
-        top = tuple(sorted(rng.sample(range(1, 50), 5)))
-        chance = rng.randint(1, 10)
     else:
-        ranking_rng = np.random.default_rng(seed)
-        top = tuple(
-            sorted(
-                int(index + 1)
-                for index in _ranking_indices(
-                    predicted,
-                    ranking_rng,
-                    champion.model,
-                    target,
-                )
-            )
-        )
-        chance = rng.randint(1, 10)
+        top = tuple(selection["numbers"])
     return {
         "status": status,
         "game": game,
@@ -803,25 +913,33 @@ def predict_next_draw(
         "training_last_date": max(dated) if dated else None,
         "model": champion.model,
         "parameters": champion.final_parameters,
-        "validation": {
-            "test_draws": champion.test_draws,
-            "mean_brier_delta": champion.mean_brier_delta,
-            "delta_ci_low": champion.delta_ci_low,
-            "delta_ci_high": champion.delta_ci_high,
-            "adjusted_p_value": champion.adjusted_p_value,
-            "uniform_expected_top5_hits": champion.uniform_expected_top5_hits,
-            "mean_top5_hits": champion.mean_top5_hits,
-            "top5_hit_uplift": champion.top5_hit_uplift,
-            "top5_ci_low": champion.top5_ci_low,
-            "top5_ci_high": champion.top5_ci_high,
-            "adjusted_top5_p_value": champion.adjusted_top5_p_value,
-            "qualification_basis": champion.qualification_basis,
-            "qualified": champion.qualified,
+        "champion_selection": {
+            "criterion": (
+                "validation_top5_hits"
+                if champion.ranking_qualified or status == "forced_experimental"
+                else "validation_brier"
+            ),
+            "validation_top5_hits": champion.validation_top5_hits,
+            "validation_brier": champion.validation_brier,
+            "note": (
+                "Champion departage sur la validation interne anterieure aux folds "
+                "de test; les metriques de test ci-dessous ne sont donc pas biaisees "
+                "par la selection."
+            ),
         },
+        "validation": _validation_summary(champion),
         "numbers": top,
         "chance": chance,
+        "chance_status": chance_prediction["status"],
+        "chance_prediction": chance_prediction,
+        "top5_selection": selection,
         "probability_spread": float(np.ptp(predicted)),
         "marginal_probabilities": {
+            number: float(predicted[number - 1])
+            for number in range(1, DEFAULT_RULES.main_pool + 1)
+        },
+        "marginal_probability_sum": float(predicted.sum()),
+        "selected_marginal_probabilities": {
             number: float(predicted[number - 1]) for number in sorted(top)
         },
         "warning": "Une sortie forcee reste experimentale et ne constitue pas un avantage prouve.",
@@ -830,6 +948,11 @@ def predict_next_draw(
                 "selection_objective": "value_aware_conservative_anti_crowd",
                 "value_aware_selection": value_selection.to_dict(),
                 "popularity_validation": popularity_predictor.validation.to_dict(),
+                "selection_objective_note": (
+                    "La grille minimise le partage attendu sous contrainte de perte "
+                    "de hits; elle n'est donc pas le Top-5 de probabilite et ne doit "
+                    "pas etre jugee sur les hits Top-5 seuls."
+                ),
             }
             if value_selection is not None
             else {"selection_objective": "top5_hits"}

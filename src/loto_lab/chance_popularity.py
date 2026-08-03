@@ -106,9 +106,13 @@ def _posterior(
 def _select_prior(observations: list[ChanceObservation], train: np.ndarray) -> float:
     dates = np.asarray([item.draw.draw_date.toordinal() for item in observations])
     train_dates = np.unique(dates[train])
-    split = train_dates[max(1, int(len(train_dates) * 0.8))]
+    if len(train_dates) < 2:
+        return CHANCE_PRIORS[0]
+    split = train_dates[min(max(1, int(len(train_dates) * 0.8)), len(train_dates) - 1)]
     inner = train[dates[train] < split]
     validation = train[dates[train] >= split]
+    if not len(inner) or not len(validation):
+        return CHANCE_PRIORS[0]
     candidates = []
     for prior in CHANCE_PRIORS:
         factors = _posterior(observations, inner, prior)

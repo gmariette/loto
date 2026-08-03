@@ -19,6 +19,7 @@ MODEL_SOURCE_FILES = (
     "value.py",
 )
 NUMBER_MODEL_SOURCE_FILES = (
+    "chance_ml.py",
     "domain.py",
     "ml.py",
     "number_prospective.py",
@@ -96,6 +97,7 @@ def build_number_model_specification(
     simulations: int,
     seed: int,
     models: tuple[str, ...],
+    block_size: int = 12,
     value_aware: bool = False,
     max_expected_hit_loss: float = 0.005,
     popularity_block_size: int = 12,
@@ -120,6 +122,7 @@ def build_number_model_specification(
             "outer_folds": outer_folds,
             "simulations": simulations,
             "seed": seed,
+            "block_size": block_size,
             "models": list(models),
             "value_aware": value_aware,
             "max_expected_hit_loss": max_expected_hit_loss,
