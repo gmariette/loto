@@ -173,8 +173,8 @@ loto-lab popularity-backtest data/loto.sqlite --target main_combination \
 
 Le modele `main_combination` additionne les gagnants des rangs 1 et 2 afin d'observer tous les
 tickets ayant les cinq numeros principaux; son exposition vaut le volume estime divise par
-`C(49,5)`. La cible historique `jackpot` reste disponible et utilise seulement le rang 1. Les deux
-hypotheses sont corrigees ensemble avant qualification. Le modele de Poisson compare sa deviance a
+`C(49,5)`. La cible historique `jackpot` reste disponible et utilise seulement le rang 1. Les six
+combinaisons cible/schema sont corrigees ensemble avant qualification. Le modele de Poisson compare sa deviance a
 une popularite uniforme calibree dans chaque fold. Ses variables structurelles sont limitees aux effets dont le
 signe reste stable dans les validations temporelles : nombres au-dessus de 31, grille entierement
 dans 1-31, paires consecutives, 7/13, somme et distance a la somme centrale. L'intervalle et la
@@ -188,9 +188,24 @@ loto-lab popularity-backtest data/loto.sqlite --target main_combination \
   --feature-set interactions --game loto --min-train 500 --folds 3
 ```
 
-Il améliore la deviance historique (`1,66104` contre `1,69002`), mais sa borne conservatrice sur
+Il ameliore la deviance historique (`1,66104` contre `1,69002`), mais sa borne conservatrice sur
 la grille courante monte a `0,45873` contre `0,29434` pour le modele de base. Il reste donc
-experimental et le modele `base` demeure la valeur par defaut.
+experimental.
+
+Le schema `number_effects` combine les six variables structurelles avec 49 indicateurs regularises,
+un par numero present dans la grille. Il apprend ainsi les preferences propres aux joueurs sans
+confondre popularite humaine et probabilite de sortie :
+
+```bash
+loto-lab popularity-backtest data/loto.sqlite --target main_combination \
+  --feature-set number_effects --game loto --min-train 500 --folds 3
+```
+
+Sur l'archive actuelle, sa deviance externe vaut `1,64870`, delta `-0,60215` contre l'uniforme,
+IC temporel `[-0,94564 ; -0,34970]` et p-value corrigee sur les six recherches `0,00300`.
+Avec le meme budget de perte de hits, sa borne prudente descend a `0,28211`, contre `0,29434`
+pour la base. Il devient donc le schema par defaut des prochaines optimisations `--value-aware`;
+`base` et `interactions` restent disponibles comme controles reproductibles.
 
 Une prediction experimentale peut ensuite chercher exhaustivement la combinaison la moins
 populaire parmi celles qui respectent un budget explicite de perte de hits attendus :

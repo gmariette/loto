@@ -33,6 +33,7 @@ from .number_prospective import (
 )
 from .participation import participation_backtest
 from .popularity import (
+    FEATURE_SETS,
     PopularityPredictor,
     fit_popularity_predictor,
     popularity_backtest,
@@ -704,7 +705,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--target", choices=("jackpot", "main_combination"), default="jackpot"
     )
     popularity.add_argument(
-        "--feature-set", choices=("base", "interactions"), default="base"
+        "--feature-set", choices=tuple(FEATURE_SETS), default="base"
     )
     popularity.set_defaults(handler=command_popularity_backtest)
 
@@ -739,7 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--target", choices=("jackpot", "main_combination"), default="jackpot"
     )
     popularity_record.add_argument(
-        "--feature-set", choices=("base", "interactions"), default="base"
+        "--feature-set", choices=tuple(FEATURE_SETS), default="base"
     )
     popularity_record.add_argument("--bootstrap-models", type=int, default=100)
     popularity_record.add_argument("--uncertainty-quantile", type=float, default=0.9)
@@ -807,8 +808,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ml_predict.add_argument(
         "--popularity-feature-set",
-        choices=("base", "interactions"),
-        default="base",
+        choices=tuple(FEATURE_SETS),
+        default="number_effects",
     )
     ml_predict.add_argument("--popularity-bootstrap-models", type=int, default=100)
     ml_predict.add_argument(
@@ -840,8 +841,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ml_record.add_argument(
         "--popularity-feature-set",
-        choices=("base", "interactions"),
-        default="base",
+        choices=tuple(FEATURE_SETS),
+        default="number_effects",
     )
     ml_record.add_argument("--popularity-bootstrap-models", type=int, default=100)
     ml_record.add_argument(

@@ -195,3 +195,28 @@ Tete des numeros : `72e7d8efab3d809f418eae04e8dca2759e114094bbbd0ddc0bd418bad463
 Empreinte du bundle de foule :
 `db9ac90018768b2bfab2790ca1490d2a6b7473fa07effe83cb6b8145f866d4b9`. Empreinte du bundle
 des numeros : `470d9c12f2187c8c76f830e4e77fb7fe07def11e3f5d8f782630951ab754bfeb`.
+
+La version 0.25 ajoute un modele hybride de foule : les six variables structurelles sont completees
+par 49 effets regularises indiquant quels numeros composent la grille. Contrairement au modele de
+tirage, ces effets cherchent uniquement les preferences des joueurs. Sur 972 observations externes,
+la deviance tombe a `1,64870`, delta `-0,60215` contre l'uniforme, IC par blocs
+`[-0,94564 ; -0,34970]`. La p-value brute `0,000500` devient `0,00300` apres correction des deux
+cibles et des trois schemas explores.
+
+Avec les probabilites marginales deja figees pour le 3 aout, le diagnostic exhaustif selectionne
+`1 42 43 44 45`, Chance `3`, pour une perte de hit attendu de `0,00455`. Sa popularite ponctuelle
+vaut `0,22058` et sa borne a 90 % `0,28211`, contre `0,29434` pour la grille v0.22. Cette grille
+n'est pas substituee a la prevision publique du 3 aout : le nouveau schema devient le defaut des
+prochaines previsions seulement.
+
+Le premier essai prospectif v0.25 cible le 5 aout : `1 42 43 44 45`, Chance `9`. Sa borne de
+popularite a 90 % vaut `0,27941`, contre `0,98480` pour le Top-5 pur, avec une perte de hit attendu
+de `0,00455`. Le classement des numeros reste `forced_experimental` et ne revendique aucun signal
+sur les boules. La cohorte de foule `2eb9c12d1475ae60a56439d94210b56d9ba4bbafc7257f4ca6a1c13aa7a1f9a5`
+et la cohorte de numeros `fd1c3a29e89c40fed8555d3d4280fe8c1c7a04b280853c42aefa795eedaf4542`
+restent toutes deux `insufficient_data`. Tetes append-only :
+`2182a53a50cbf1e9a762d6a801174282633df5259b90d18e0be504b47689cd6e` pour la foule et
+`3ca9634dd7055c0a9507cce5cb46a882aa49d63bca4cbad4d3466c3cfd0d2c42` pour les numeros.
+Empreintes des bundles :
+`b3f3c9394761bff41fea920be123603c6abef6c3572796dd3d8718d5b6f98ffc` et
+`221e520a8bd4d8eed200a837559120627a9db24583564b246c6d5a1dc818d285`.

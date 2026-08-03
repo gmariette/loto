@@ -27,15 +27,19 @@ INTERACTION_FEATURE_NAMES = BASE_FEATURE_NAMES + (
     "consecutive_pairs_squared",
     "normalized_sum_squared",
 )
+NUMBER_EFFECT_FEATURE_NAMES = BASE_FEATURE_NAMES + tuple(
+    f"contains_number_{number}" for number in range(1, DEFAULT_RULES.main_pool + 1)
+)
 FEATURE_SETS = {
     "base": BASE_FEATURE_NAMES,
     "interactions": INTERACTION_FEATURE_NAMES,
+    "number_effects": NUMBER_EFFECT_FEATURE_NAMES,
 }
 # Backward-compatible public alias used by v0.21/v0.22 evidence.
 FEATURE_NAMES = BASE_FEATURE_NAMES
 ALPHAS = (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
 POPULARITY_TARGETS = ("jackpot", "main_combination")
-POPULARITY_HYPOTHESES = len(POPULARITY_TARGETS)
+POPULARITY_HYPOTHESES = len(POPULARITY_TARGETS) * len(FEATURE_SETS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,16 +206,20 @@ def _feature_matrix(
     ).astype(float)
     if feature_names == BASE_FEATURE_NAMES:
         return base
-    return np.column_stack(
-        (
-            base,
-            base[:, 0] * base[:, 4],
-            base[:, 2] * base[:, 4],
-            base[:, 0] ** 2,
-            base[:, 2] ** 2,
-            base[:, 4] ** 2,
-        )
-    ).astype(float)
+    if feature_names == INTERACTION_FEATURE_NAMES:
+        return np.column_stack(
+            (
+                base,
+                base[:, 0] * base[:, 4],
+                base[:, 2] * base[:, 4],
+                base[:, 0] ** 2,
+                base[:, 2] ** 2,
+                base[:, 4] ** 2,
+            )
+        ).astype(float)
+    number_effects = np.zeros((len(ordered), DEFAULT_RULES.main_pool), dtype=float)
+    number_effects[np.arange(len(ordered))[:, np.newaxis], ordered - 1] = 1.0
+    return np.column_stack((base, number_effects))
 
 
 def _arrays(

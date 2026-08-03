@@ -6,6 +6,8 @@ import numpy as np
 
 from loto_lab.domain import Draw, PrizeResult
 from loto_lab.popularity import (
+    NUMBER_EFFECT_FEATURE_NAMES,
+    _feature_matrix,
     fit_popularity_predictor,
     optimize_value_aware_ticket,
     popularity_backtest,
@@ -56,13 +58,28 @@ class PopularityTests(unittest.TestCase):
             target="main_combination",
             min_train=100,
             outer_folds=2,
-            simulations=100,
+            simulations=200,
             block_size=6,
             seed=12,
         )
         self.assertEqual(result.target, "main_combination")
-        self.assertEqual(result.adjusted_p_value, min(1.0, 2 * result.permutation_p_value))
+        self.assertEqual(result.adjusted_p_value, min(1.0, 6 * result.permutation_p_value))
         self.assertTrue(result.qualified)
+
+    def test_number_effect_features_encode_each_selected_number(self) -> None:
+        mains = np.asarray([[1, 7, 32, 41, 49], [2, 3, 4, 5, 6]])
+        features = _feature_matrix(
+            mains,
+            np.asarray([1, 2]),
+            NUMBER_EFFECT_FEATURE_NAMES,
+        )
+        number_effects = features[:, -49:]
+        self.assertEqual(features.shape, (2, len(NUMBER_EFFECT_FEATURE_NAMES)))
+        np.testing.assert_array_equal(number_effects.sum(axis=1), [5, 5])
+        self.assertEqual(number_effects[0, 0], 1)
+        self.assertEqual(number_effects[0, 6], 1)
+        self.assertEqual(number_effects[0, 31], 1)
+        self.assertEqual(number_effects[0, 48], 1)
 
     def test_temporal_backtest_and_value_aware_constraint(self) -> None:
         draws = popularity_draws()

@@ -10,7 +10,12 @@ import numpy as np
 
 from loto_lab.domain import Draw, PrizeResult, Ticket
 from loto_lab.model_identity import build_popularity_model_specification
-from loto_lab.popularity import fit_popularity_predictor, popularity_backtest
+from loto_lab.popularity import (
+    NUMBER_EFFECT_FEATURE_NAMES,
+    _feature_matrix,
+    fit_popularity_predictor,
+    popularity_backtest,
+)
 from loto_lab.popularity_prospective import (
     POPULARITY_EVIDENCE_FORMAT,
     export_popularity_evidence,
@@ -63,7 +68,7 @@ class PopularityProspectiveTests(unittest.TestCase):
             self.draws,
             min_train=100,
             outer_folds=2,
-            simulations=100,
+            simulations=200,
             block_size=6,
             seed=12,
         )
@@ -83,7 +88,7 @@ class PopularityProspectiveTests(unittest.TestCase):
             game="loto",
             min_train=100,
             outer_folds=2,
-            simulations=100,
+            simulations=200,
             block_size=6,
             seed=seed,
             bootstrap_models=20,
@@ -123,6 +128,33 @@ class PopularityProspectiveTests(unittest.TestCase):
             + features @ np.asarray(model["raw_coefficients"], dtype=float)
         )[0]
         self.assertAlmostEqual(restored, self.predictor.multiplier(Ticket(draw.main, 1)))
+
+    def test_number_effect_model_serialization_reproduces_prediction(self) -> None:
+        result = popularity_backtest(
+            self.draws,
+            min_train=100,
+            outer_folds=2,
+            simulations=200,
+            block_size=6,
+            seed=12,
+            feature_set="number_effects",
+        )
+        predictor = fit_popularity_predictor(
+            self.draws, result, bootstrap_models=20, seed=12
+        )
+        model = serialize_popularity_predictor(predictor)
+        draw = self._result_draw(date(2030, 1, 1), (1, 7, 32, 41, 49))
+        features = _feature_matrix(
+            np.asarray([draw.main]),
+            np.asarray([draw.chance]),
+            NUMBER_EFFECT_FEATURE_NAMES,
+        )
+        restored = np.exp(
+            model["raw_intercept"]
+            + features @ np.asarray(model["raw_coefficients"], dtype=float)
+        )[0]
+        self.assertEqual(tuple(model["feature_names"]), NUMBER_EFFECT_FEATURE_NAMES)
+        self.assertAlmostEqual(restored, predictor.multiplier(Ticket(draw.main, 1)))
 
     def test_append_only_record_score_export_and_tamper_detection(self) -> None:
         target = self.draws[-1].draw_date + timedelta(days=1)
@@ -228,7 +260,7 @@ class PopularityProspectiveTests(unittest.TestCase):
             target="main_combination",
             min_train=100,
             outer_folds=2,
-            simulations=100,
+            simulations=200,
             block_size=6,
             seed=12,
         )
