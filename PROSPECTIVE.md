@@ -229,3 +229,48 @@ remplacer les previsions precedentes : `1 42 43 44 45`, Chance `3`. Sa borne de 
 Empreintes des bundles avant tirage :
 `c5c6e86349083ef27d283c68b5015f6ae441837b3d1495c12cdc5329ba72f575` et
 `03cb68727a5ce0eae54ff33fc919ef1e465525bd1853e65597343ea69108f95f`.
+
+La version 0.26 retire entierement le `randint(1, 10)` de la prediction Chance. Un modele temporel
+de Dirichlet produit les dix probabilites a partir des tirages anterieurs, avec memoire limitee,
+transition depuis le Chance precedent et effet du jour.
+
+## Audit scientifique v0.27
+
+Les chiffres publies ci-dessus pour la v0.26 (`9,83 %` de Top-1, delta Brier `+0,0000203`,
+IC `[-0,0000547 ; 0,0000995]`, `p=0,691`, maximum `7` a `10,78 %`) **ne se reproduisaient pas**
+depuis le code livre : la derniere modification du modele n'avait pas ete repassee dans la
+documentation. Ils sont conserves ici comme trace historique et remplaces par les valeurs
+reellement reproductibles.
+
+L'audit a ete conduit sur `data/loto.sqlite` arrete au 1er aout 2026. Le tirage du 3 aout 2026
+(`5 25 37 41 42`, Chance `10`) n'est present dans aucune base ni aucun artefact de cette version :
+aucun seuil, aucune graine et aucun hyperparametre n'a ete choisi en fonction de ce resultat, et
+les previsions deja figees pour le 3 aout n'ont pas ete modifiees.
+
+Trois defauts de methode ont ete corriges.
+
+1. **Le champion etait choisi par une graine.** `hierarchical_ridge_ranker` produisait des
+   probabilites bit-a-bit identiques a `rolling_ridge_ranker`; seule sa graine de departage
+   differait. C'est pourtant lui qui a remporte la selection de toutes les previsions d'aout, avec
+   un uplift de test `0,02664` contre `0,02575`, et lui seul obtenait une borne basse positive
+   (`+0,00029` contre `-0,00195`) — sur des predictions rigoureusement identiques. Le modele est
+   retire et la metrique de hits est desormais calculee en esperance sur les ex aequo, donc
+   independante de toute graine.
+2. **Le champion etait selectionne sur la mesure ensuite publiee comme sa validation.** Il l'est
+   maintenant sur la validation interne anterieure aux folds de test.
+3. **Un modele Chance non qualifie publiait quand meme un numero.** La sortie est maintenant une
+   abstention explicite avec dix probabilites a `10 %`.
+
+Sur 2 289 tirages hors-echantillon, le modele Chance corrige donne un delta Brier `+2,034e-05`
+(IC `[-5,12e-05 ; +9,64e-05]`), un delta de log-loss `+0,0010115`
+(IC `[-0,002562 ; +0,004997]`), une erreur de calibration `0,006126` contre `0` pour l'uniforme et
+un Top-1 de `10,019 %` (IC `[-1,146 ; +1,162]` points). Il est donc **moins bon que l'uniforme sur
+les deux regles de score propres** et indiscernable de `10 %` sur le Top-1. Aucune des trois
+p-values corrigees ne descend sous `1,000`. La sortie pour le 5 aout est donc
+`status = "abstention"`, `number = null`, dix probabilites a `0,1`; le maximum du modele (`7`,
+`10,79 %`) reste confine au bloc `experimental`.
+
+Cote numeros, aucun des sept modeles restants ne se qualifie : la borne basse de l'uplift Top-5
+reste negative pour tous (`rolling_ridge_ranker` : `+0,02746`, IC `[-0,00061 ; +0,05575]`,
+Holm `0,420`; `ridge_ranker` : `+0,02084`, IC `[-0,00553 ; +0,04720]`, Holm `0,864`). La decision
+publiee reste `abstention`.

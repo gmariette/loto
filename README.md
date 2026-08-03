@@ -103,7 +103,7 @@ dans les donnees fournies.
 ### Validation ML
 
 Executer les modeles bayesien cumulatif, bayesien temporel, logistique probabiliste, logistique
-optimisee pour le Top-5, Ridge intra-tirage, deux Ridge sur frequences glissantes et gradient
+optimisee pour le Top-5, Ridge intra-tirage, Ridge sur frequences glissantes et gradient
 boosting sur le jeu cible uniquement :
 
 ```bash
@@ -124,10 +124,22 @@ Le `logistic_ranker` choisit au contraire sa regularisation sur les hits interne
 classement complet. Le `ridge_ranker` centre les 49 candidats de chaque tirage avant apprentissage :
 seules les differences entre numeros peuvent influencer leur ordre. Le `rolling_ridge_ranker`
 elimine les biais fixes et ne conserve que les frequences passees sur 10, 50 et 200 tirages. Chaque
-famille possede une graine stable independante de son ordre dans la liste. Le
-`hierarchical_ridge_ranker` reprend ce score et departage seulement ses ex aequo par le retard
-normalise, puis par une graine stable si les deux criteres sont encore identiques. `--as-of` fige
+famille possede une graine stable independante de son ordre dans la liste. `--as-of` fige
 explicitement la derniere date admise dans une experience reproductible.
+
+La version 0.27 a retire `hierarchical_ridge_ranker` : ses probabilites etaient bit-a-bit
+identiques a celles de `rolling_ridge_ranker` (memes variables, meme estimateur, meme grille), et
+seule sa regle de departage differait. Il n'apportait donc aucun signal hors-echantillon tout en
+gonflant la famille de Holm de 14 a 16 tests.
+
+Les hits Top-5 sont mesures **en esperance** sur les ex aequo : les numeros strictement au-dessus
+du seuil sont toujours retenus et les ex aequo se partagent les places restantes. Un departage
+aleatoire rendait la metrique dependante de la graine — sur l'archive reelle, le meme
+`rolling_ridge_ranker` affichait un uplift compris entre `+0,02575` et `+0,03022` selon la seule
+graine, et le modele retire devait sa borne basse positive a ce hasard. Le champ
+`tied_selection_draws` publie desormais le nombre de tirages concernes. Les intervalles et les
+p-values utilisent des blocs mobiles (`--block-size`, 12 par defaut) plutot qu'un bootstrap IID,
+car les deltas par tirage sont serialement dependants.
 
 Demander une prediction avec abstention obligatoire :
 
@@ -137,11 +149,21 @@ loto-lab ml-predict data/loto.sqlite --date 2026-08-01 --game loto
 
 Le programme ne renvoie des numeros que si le modele se qualifie sur l'une de deux voies : Brier
 significativement meilleur que l'uniforme, ou gain de hits Top-5 dont la borne basse est positive.
-Les p-values des huit modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
+Les p-values des sept modeles et des deux metriques sont corrigees ensemble par Holm. `--force`
 existe pour les experiences, mais sa sortie porte explicitement le statut `forced_experimental`.
 Elle publie aussi le jeu, la cible, la derniere date d'apprentissage, le delta Brier, son intervalle,
 les hits Top-5, leurs intervalles et p-values corrigees, ainsi que l'amplitude des probabilites afin
 qu'une grille ne soit jamais detachee de sa preuve de non-qualification.
+
+Le champion est departage sur `validation_top5_hits`, mesure dans la validation interne anterieure
+a chaque fold de test, et jamais sur l'uplift de test lui-meme : selectionner le gagnant sur la
+mesure ensuite publiee comme sa validation biaiserait cette validation (malediction du vainqueur).
+Le bloc `champion_selection` expose le critere retenu.
+
+La sortie publie les 49 probabilites marginales et leur somme (`marginal_probability_sum`), qui
+vaut exactement `5` par construction, ainsi que `top5_selection`, qui separe les numeros
+strictement retenus des ex aequo et nomme la regle de departage. Si le modele retenu produit 49
+probabilites identiques, la commande s'abstient au lieu de tirer une grille au hasard.
 
 Figer une experience sans mise avant tirage, puis la noter apres publication du resultat :
 
@@ -237,6 +259,42 @@ des rangs 1 et 2. Il publie les facteurs par numero, leur evolution entre la pre
 seconde moitie de l'historique, un intervalle par blocs et une p-value. Tant que la borne haute ne
 reste pas negative, le facteur Chance ne modifie pas la grille; sur l'archive actuelle le test
 reste non qualifie (`delta -0,00888`, IC `[-0,02199 ; 0,00632]`, `p=0,099`).
+
+La prediction du numero Chance est un probleme separe de cette popularite. La version 0.26 avait
+supprime la selection pseudo-aleatoire `randint(1, 10)`; la version 0.27 termine le travail en
+transformant le probleme en vraie tache multiclasse a dix probabilites de somme exactement `1` :
+
+```bash
+loto-lab chance-ml-backtest data/loto.sqlite --date 2026-08-05 \
+  --game loto --min-train 500 --folds 3 --simulations 2000
+```
+
+Le modele combine une frequence de Dirichlet globale ou a fenetre, les transitions depuis le
+numero Chance precedent et le jour du tirage. La fenetre, l'a priori et les poids sont choisis
+uniquement dans une validation interne anterieure a chaque fold teste. La sortie publie les dix
+probabilites et **quatre** comparaisons a la reference `10 %` : Brier, log-loss, calibration et
+taux de Top-1, chacune avec un intervalle par blocs mobiles et une p-value corrigee pour les trois
+tests de qualification.
+
+Sur les 2 289 tirages hors-echantillon de l'archive actuelle :
+
+| metrique | modele | reference uniforme | delta | IC 95 % | p corrigee |
+| --- | --- | --- | --- | --- | --- |
+| Brier | `0,0900203` | `0,09` | `+2,034e-05` | `[-5,12e-05 ; +9,64e-05]` | `1,000` |
+| Log-loss | `2,303597` | `2,302585` | `+0,0010115` | `[-0,002562 ; +0,004997]` | `1,000` |
+| Calibration | `0,006126` | `0,000000` | `+0,006126` | — | — |
+| Top-1 | `10,019 %` | `10 %` | `+0,019 pt` | `[-1,146 ; +1,162] pt` | `1,000` |
+
+Le modele est donc **plus mauvais** que l'uniforme sur les deux regles de score propres et sur la
+calibration, et son Top-1 est indiscernable de `10 %`. La sortie publiee est par consequent une
+abstention explicite : `status = "abstention"`, `number = null`, et dix probabilites egales a
+`0,1`. Le maximum de la distribution du modele (`7`) reste consultable dans le bloc
+`experimental`, qui porte son propre avertissement et n'est jamais presente comme une prediction.
+
+Le taux de Top-1 est calcule en esperance : quand plusieurs numeros partagent la probabilite
+maximale (91 tirages ici), le credit est partage au lieu d'etre attribue au plus petit numero par
+`argmax`. Sans ce correctif, le meme modele affichait `10,485 %` de Top-1, un artefact du
+departage arbitraire et non un signal.
 
 Figer les coefficients avant un tirage, les noter apres publication des rapports puis verifier la
 preuve autonome :
@@ -404,10 +462,12 @@ etre remplaces par les montants du tirage etudie. La simulation ne modelise pas 
 colonnes attendues sont `date_de_tirage`, les colonnes `boule_N` et le numero special. Les doublons
 sont retires et les tirages dates sont tries chronologiquement. Les archives sont segmentees ainsi :
 
-- `2 859` tirages compatibles `5/49 + Chance` depuis octobre 2008 : 2 788 Loto, 60 Super Loto
+- `2 860` tirages compatibles `5/49 + Chance` depuis octobre 2008 : 2 789 Loto, 60 Super Loto
   et 11 Grand Loto ;
 - `2 707` tirages `6/49 + complementaire` entre janvier 1996 et octobre 2008 : 2 664 Loto et
   43 Super Loto.
+
+Ces comptes decrivent `data/loto.sqlite` arrete au tirage du 1er aout 2026 inclus.
 
 Ces regimes ne sont jamais fusionnes dans un test ou un backtest.
 

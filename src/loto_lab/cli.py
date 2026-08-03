@@ -4,9 +4,10 @@ import argparse
 import json
 from collections import Counter
 from dataclasses import asdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
+from .chance_ml import chance_ml_backtest, predict_chance
 from .chance_popularity import chance_popularity_backtest
 from .data import (
     download_all_archives,
@@ -160,6 +161,7 @@ def command_ml_backtest(args: argparse.Namespace) -> None:
         seed=args.seed,
         game=args.game,
         as_of=date.fromisoformat(args.as_of) if args.as_of else None,
+        block_size=args.block_size,
     )
     payload = {
         "game": args.game,
@@ -201,6 +203,33 @@ def command_chance_popularity_backtest(args: argparse.Namespace) -> None:
         seed=args.seed,
     )
     _print_json(result.to_dict())
+
+
+def command_chance_ml_backtest(args: argparse.Namespace) -> None:
+    draws = load_draws_many(args.data)
+    result = chance_ml_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
+    )
+    latest = max(
+        draw.draw_date
+        for draw in draws
+        if draw.game == args.game and draw.draw_date is not None
+    )
+    target = date.fromisoformat(args.date) if args.date else latest + timedelta(days=1)
+    _print_json(
+        {
+            "backtest": result.to_dict(),
+            "prediction": predict_chance(
+                draws, target, game=args.game, validation=result
+            ),
+        }
+    )
 
 
 def command_popularity_record(args: argparse.Namespace) -> None:
@@ -336,6 +365,16 @@ def command_ml_predict(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         seed=args.seed,
         game=args.game,
+        block_size=args.block_size,
+    )
+    chance_validation = chance_ml_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
     )
     _print_json(
         predict_next_draw(
@@ -347,6 +386,8 @@ def command_ml_predict(args: argparse.Namespace) -> None:
             seed=args.seed,
             popularity_predictor=popularity_predictor,
             max_expected_hit_loss=args.max_expected_hit_loss,
+            chance_validation=chance_validation,
+            min_history=args.min_history,
         )
     )
 
@@ -365,6 +406,16 @@ def command_ml_record(args: argparse.Namespace) -> None:
         simulations=args.simulations,
         seed=args.seed,
         game=args.game,
+        block_size=args.block_size,
+    )
+    chance_validation = chance_ml_backtest(
+        draws,
+        game=args.game,
+        min_train=args.min_train,
+        outer_folds=args.folds,
+        simulations=args.simulations,
+        block_size=args.block_size,
+        seed=args.seed,
     )
     prediction = predict_next_draw(
         draws,
@@ -375,6 +426,8 @@ def command_ml_record(args: argparse.Namespace) -> None:
         seed=args.seed,
         popularity_predictor=popularity_predictor,
         max_expected_hit_loss=args.max_expected_hit_loss,
+        chance_validation=chance_validation,
+        min_history=args.min_history,
     )
     specification = build_number_model_specification(
         game=args.game,
@@ -383,6 +436,7 @@ def command_ml_record(args: argparse.Namespace) -> None:
         outer_folds=args.folds,
         simulations=args.simulations,
         seed=args.seed,
+        block_size=args.block_size,
         models=DEFAULT_MODELS,
         value_aware=args.value_aware,
         max_expected_hit_loss=args.max_expected_hit_loss,
@@ -677,6 +731,12 @@ def build_parser() -> argparse.ArgumentParser:
     ml_backtest.add_argument("--min-train", type=int, default=500)
     ml_backtest.add_argument("--folds", type=int, default=3)
     ml_backtest.add_argument("--simulations", type=int, default=2_000)
+    ml_backtest.add_argument(
+        "--block-size",
+        type=int,
+        default=12,
+        help="Longueur des blocs temporels pour les intervalles et les p-values",
+    )
     ml_backtest.add_argument("--seed", type=int, default=0)
     ml_backtest.add_argument(
         "--as-of",
@@ -722,6 +782,22 @@ def build_parser() -> argparse.ArgumentParser:
     chance_popularity.add_argument("--simulations", type=int, default=2_000)
     chance_popularity.add_argument("--seed", type=int, default=0)
     chance_popularity.set_defaults(handler=command_chance_popularity_backtest)
+
+    chance_ml = subparsers.add_parser(
+        "chance-ml-backtest",
+        help="Valider une distribution predictive pour le prochain numero Chance",
+    )
+    chance_ml.add_argument("data", type=Path, nargs="+")
+    chance_ml.add_argument(
+        "--game", choices=("loto", "super_loto", "grand_loto"), default="loto"
+    )
+    chance_ml.add_argument("--date")
+    chance_ml.add_argument("--min-train", type=int, default=500)
+    chance_ml.add_argument("--folds", type=int, default=3)
+    chance_ml.add_argument("--simulations", type=int, default=2_000)
+    chance_ml.add_argument("--block-size", type=int, default=12)
+    chance_ml.add_argument("--seed", type=int, default=0)
+    chance_ml.set_defaults(handler=command_chance_ml_backtest)
 
     popularity_record = subparsers.add_parser(
         "popularity-record", help="Figer un modele de popularite avant le tirage"
@@ -796,6 +872,7 @@ def build_parser() -> argparse.ArgumentParser:
     ml_predict.add_argument("--min-train", type=int, default=500)
     ml_predict.add_argument("--folds", type=int, default=3)
     ml_predict.add_argument("--simulations", type=int, default=2_000)
+    ml_predict.add_argument("--block-size", type=int, default=12)
     ml_predict.add_argument("--seed", type=int, default=0)
     ml_predict.add_argument("--force", action="store_true")
     ml_predict.add_argument("--value-aware", action="store_true")
@@ -829,6 +906,7 @@ def build_parser() -> argparse.ArgumentParser:
     ml_record.add_argument("--min-train", type=int, default=500)
     ml_record.add_argument("--folds", type=int, default=3)
     ml_record.add_argument("--simulations", type=int, default=2_000)
+    ml_record.add_argument("--block-size", type=int, default=12)
     ml_record.add_argument("--seed", type=int, default=0)
     ml_record.add_argument("--force", action="store_true")
     ml_record.add_argument("--value-aware", action="store_true")
