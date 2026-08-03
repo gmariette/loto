@@ -102,7 +102,7 @@ def build_number_model_specification(
     popularity_bootstrap_models: int = 100,
     popularity_uncertainty_quantile: float = 0.9,
     popularity_target: str = "main_combination",
-    popularity_feature_set: str = "base",
+    popularity_feature_set: str = "number_effects",
 ) -> dict[str, object]:
     specification: dict[str, object] = {
         "format": NUMBER_MODEL_SPECIFICATION_FORMAT,
