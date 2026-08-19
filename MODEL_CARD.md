@@ -17,9 +17,9 @@ prediction lorsque les preuves hors echantillon sont insuffisantes.
 - Regression Ridge et gradient boosting pour le volume de grilles.
 
 Les probabilites marginales sont projetees sur la contrainte `somme = 5`, puis retractees vers
-l'uniforme avec un poids choisi dans le passe. Le numero Chance reste
-uniforme : son test global ne montre pas d'anomalie et les donnees ne justifient pas un modele a
-dix classes supplementaire.
+l'uniforme avec un poids choisi dans le passe. Un modele temporel a dix classes audite le numero
+Chance, mais sa sortie publiee reste uniforme avec abstention tant qu'il ne bat pas cette reference
+sur Brier, log-loss ou Top-1.
 
 ## Evaluation
 
@@ -47,7 +47,7 @@ dix classes supplementaire.
 
 ## Limites
 
-- Seulement 2 859 tirages compatibles avec le format actuel.
+- Seulement 2 867 tirages compatibles avec le format actuel.
 - Aucun identifiant public de machine, jeu de boules, maintenance ou operateur dans les archives.
 - Absence des combinaisons effectivement choisies par tous les joueurs.
 - Le volume de grilles est un proxy statistique, pas une mesure FDJ certifiee.
@@ -68,13 +68,14 @@ dix classes supplementaire.
 - L'automatisation evite les doublons mais ne peut pas inventer un jackpot ou une source officielle;
   un manifeste incorrect reste refuse ou produit une entree incorrecte mais tracable.
 - Le journal d'execution reste une preuve locale tant que sa tete n'est pas publiee exterieurement.
-- Une seule prevision prospective est actuellement en attente; aucune performance future ne peut
-  encore etre estimee.
+- La cohorte v0.27 ne contient qu'un score et les cohortes anterieures n'ont chacune qu'une
+  observation; aucune performance prospective ne peut encore etre estimee.
 
 ## Resultat actuel
 
-Aucun des sept modeles de numeros ne se qualifie. Le Ridge glissant obtient le meilleur Top-5 brut
-et une p-value brute inferieure a 5 %, mais son intervalle touche encore zero et Holm corrige les
-14 hypotheses. La sortie de production est `abstention`. Le
-gradient boosting de participation se qualifie contre sa reference et sert uniquement au calcul
-de partage et de valeur. Le mode force ne doit pas etre presente comme une prediction gagnante.
+Aucun des sept modeles de numeros ne se qualifie. Sur les donnees arretees au 17 aout 2026, le
+Ridge retenu en mode force degrade le Brier uniforme et son intervalle de gain Top-5 contient zero
+apres correction des 14 hypotheses. Le replay strict des sept tirages du 3 au 17 aout obtient deux
+hits contre `3,571` attendus. La sortie de production est `abstention`. Le gradient boosting de
+participation se qualifie contre sa reference et sert uniquement au calcul de partage et de valeur.
+Le mode force ne doit pas etre presente comme une prediction gagnante.

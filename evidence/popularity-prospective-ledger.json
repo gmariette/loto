@@ -4,10 +4,10 @@
   "ledger": {
     "valid": true,
     "errors": [],
-    "snapshots": 5,
-    "scores": 0,
-    "snapshot_head_hash": "0d5a9732bb72268734342368faf55edb9c553ccd53192d01c2b0db9d234c392a",
-    "score_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "snapshots": 6,
+    "scores": 6,
+    "snapshot_head_hash": "517a0c8b4883b29b0bb6f304d10cdf0df5ae31ff8d9821882f4f69a9afa14b62",
+    "score_head_hash": "8e4a53bd6b67cfac6061cb662e78eae8bea6ec79c23f8479c956f8e789b8a273",
     "cohorts": [
       {
         "evaluation_cohort": "4a85eb1f2b0b1a45f253e1c2635498d705d955d84cddfaa91261bca3f499a90e",
@@ -16,13 +16,13 @@
           "0.21.0"
         ],
         "snapshots": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.025,
-        "mean_model_deviance": null,
-        "mean_baseline_deviance": null,
-        "mean_deviance_delta": null,
+        "mean_model_deviance": 0.17441104316009723,
+        "mean_baseline_deviance": 0.27586223221754946,
+        "mean_deviance_delta": -0.10145118905745223,
         "delta_ci_low": null,
         "delta_ci_high": null,
         "block_sign_p_value": null,
@@ -35,13 +35,13 @@
           "0.22.0"
         ],
         "snapshots": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.008333333333333333,
-        "mean_model_deviance": null,
-        "mean_baseline_deviance": null,
-        "mean_deviance_delta": null,
+        "mean_model_deviance": 0.09204948364533783,
+        "mean_baseline_deviance": 0.09253785458396957,
+        "mean_deviance_delta": -0.0004883709386317436,
         "delta_ci_low": null,
         "delta_ci_high": null,
         "block_sign_p_value": null,
@@ -54,13 +54,13 @@
           "0.24.0"
         ],
         "snapshots": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.004166666666666667,
-        "mean_model_deviance": null,
-        "mean_baseline_deviance": null,
-        "mean_deviance_delta": null,
+        "mean_model_deviance": 0.1496542497541632,
+        "mean_baseline_deviance": 0.09253785458396957,
+        "mean_deviance_delta": 0.05711639517019362,
         "delta_ci_low": null,
         "delta_ci_high": null,
         "block_sign_p_value": null,
@@ -73,13 +73,13 @@
           "0.25.0"
         ],
         "snapshots": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.0025,
-        "mean_model_deviance": null,
-        "mean_baseline_deviance": null,
-        "mean_deviance_delta": null,
+        "mean_model_deviance": 1.0945572795570169,
+        "mean_baseline_deviance": 0.5051042924476241,
+        "mean_deviance_delta": 0.5894529871093928,
         "delta_ci_low": null,
         "delta_ci_high": null,
         "block_sign_p_value": null,
@@ -92,13 +92,32 @@
           "0.25.0"
         ],
         "snapshots": 1,
-        "scores": 0,
-        "qualification_scores": 0,
+        "scores": 1,
+        "qualification_scores": 1,
         "qualification_target": 100,
         "alpha_budget": 0.0016666666666666668,
-        "mean_model_deviance": null,
-        "mean_baseline_deviance": null,
-        "mean_deviance_delta": null,
+        "mean_model_deviance": 0.16575962193171856,
+        "mean_baseline_deviance": 0.09253785458396957,
+        "mean_deviance_delta": 0.07322176734774899,
+        "delta_ci_low": null,
+        "delta_ci_high": null,
+        "block_sign_p_value": null,
+        "qualification_status": "insufficient_data"
+      },
+      {
+        "evaluation_cohort": "3a3d3984b36387b435688d0a08430fa4023f667d00248eae0ee718cb59069038",
+        "cohort_index": 6,
+        "model_versions": [
+          "0.27.0"
+        ],
+        "snapshots": 1,
+        "scores": 1,
+        "qualification_scores": 1,
+        "qualification_target": 100,
+        "alpha_budget": 0.0011904761904761906,
+        "mean_model_deviance": 0.5471615092946447,
+        "mean_baseline_deviance": 0.28953707403181683,
+        "mean_deviance_delta": 0.25762443526282786,
         "delta_ci_low": null,
         "delta_ci_high": null,
         "block_sign_p_value": null,
@@ -912,7 +931,780 @@
         }
       },
       "payload_canonical_json": "{\"model\":{\"alpha\":0.1,\"baseline_multiplier\":1.00246875916034,\"bootstrap_models\":100,\"feature_names\":[\"numbers_above_31\",\"all_numbers_at_most_31\",\"consecutive_pairs\",\"lucky_numbers_7_13\",\"normalized_sum\",\"distance_from_central_sum\",\"contains_number_1\",\"contains_number_2\",\"contains_number_3\",\"contains_number_4\",\"contains_number_5\",\"contains_number_6\",\"contains_number_7\",\"contains_number_8\",\"contains_number_9\",\"contains_number_10\",\"contains_number_11\",\"contains_number_12\",\"contains_number_13\",\"contains_number_14\",\"contains_number_15\",\"contains_number_16\",\"contains_number_17\",\"contains_number_18\",\"contains_number_19\",\"contains_number_20\",\"contains_number_21\",\"contains_number_22\",\"contains_number_23\",\"contains_number_24\",\"contains_number_25\",\"contains_number_26\",\"contains_number_27\",\"contains_number_28\",\"contains_number_29\",\"contains_number_30\",\"contains_number_31\",\"contains_number_32\",\"contains_number_33\",\"contains_number_34\",\"contains_number_35\",\"contains_number_36\",\"contains_number_37\",\"contains_number_38\",\"contains_number_39\",\"contains_number_40\",\"contains_number_41\",\"contains_number_42\",\"contains_number_43\",\"contains_number_44\",\"contains_number_45\",\"contains_number_46\",\"contains_number_47\",\"contains_number_48\",\"contains_number_49\"],\"feature_set\":\"number_effects\",\"historical_validation\":{\"adjusted_p_value\":0.0029985007496251873,\"baseline_poisson_deviance\":2.2508515716574595,\"delta_ci_high\":-0.3497016328436005,\"delta_ci_low\":-0.9456394640352522,\"deviance_delta\":-0.6021469276818454,\"feature_set\":\"number_effects\",\"final_alpha\":0.1,\"game\":\"loto\",\"inference_method\":\"moving_block_bootstrap_and_block_sign_permutation\",\"mean_poisson_deviance\":1.648704643975614,\"observations\":1472,\"outer_folds\":3,\"permutation_p_value\":0.0004997501249375312,\"qualified\":true,\"selected_alphas\":[1.0,1.0,0.1],\"target\":\"main_combination\",\"temporal_block_size\":12,\"test_observations\":972},\"observations\":1472,\"raw_coefficients\":[-0.07553766680236251,0.5827640773339414,-0.3421869699153913,0.07537827446372897,-0.37099587430479253,0.5025142867976093,-0.22877864165374073,-0.14705863273673944,-0.03167742659234878,-0.05633087632912769,0.12571003736566078,-0.017684611467898455,0.009444913420904831,0.03177460033688005,0.20321517873661504,0.17063407917876205,0.11310604261400921,0.37444284740881467,0.13095882804141726,0.22188507307178848,-0.004587660488486314,0.05281566495609839,0.031965386631897394,0.11728069320879438,0.15198323860019367,0.006806685885314501,0.0407498951135563,-0.055643350916412766,0.008301529136546784,0.02345555593885286,-0.0740353565275249,-0.11677395942067277,0.07810643171895992,0.13166388648254032,-0.02667776357854335,-0.17941917950524816,-0.15518103617660017,-0.028460774444865743,0.07300891353518608,-0.1047691856195082,-0.1971643031149984,-0.12342188088633109,-0.10055046052369568,0.02779547355417861,-0.015001365979794129,-0.1646184420206907,-0.06746253374907701,-0.05863397218791569,-0.07074279597775548,0.07102721490140494,0.020575074794160143,-0.15928312894887872,-0.07211393836934431,-0.040812496118377874,0.10955448167727644],\"raw_intercept\":0.2653358796597727,\"target\":\"main_combination\",\"uncertainty_quantile\":0.9},\"model_specification\":{\"format\":\"loto-lab.popularity-model\",\"parameters\":{\"block_size\":12,\"bootstrap_models\":100,\"feature_set\":\"number_effects\",\"game\":\"loto\",\"min_train\":500,\"outer_folds\":3,\"seed\":20260803,\"simulations\":2000,\"target\":\"main_combination\",\"uncertainty_quantile\":0.9},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"14611257b509afa7df2b8737cab36cbe5c0ca8582c5fbe5e94559dfb2502479b\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/popularity.py\",\"sha256\":\"9db07127e976cb588061b167771be367881f20e6528ca56a6e07b79a59e97e71\"},{\"path\":\"loto_lab/popularity_prospective.py\",\"sha256\":\"5db81d0bddc4d1a3ec7ad64f4415b1a1f08fab5dea01b23bda6de63d823ef95d\"},{\"path\":\"loto_lab/probability.py\",\"sha256\":\"5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5\"}],\"specification_version\":1},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2860,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-08-01\",\"sha256\":\"cb7091ddcf542f733f01ce50655dc60e9d9241670d6c3a2acdbcec804bac16fc\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"d8555276d0ccdeb54486912c9eab2149cca60e00f54cb5a1ee5b94241598ecc4\",\"size\":4161536}]}}}"
+    },
+    {
+      "id": 6,
+      "created_at": "2026-08-16T14:40:47.112466+00:00",
+      "model_version": "0.27.0",
+      "evaluation_cohort": "3a3d3984b36387b435688d0a08430fa4023f667d00248eae0ee718cb59069038",
+      "cohort_index": 6,
+      "game": "loto",
+      "target_date": "2026-08-17",
+      "training_last_date": "2026-08-15",
+      "previous_hash": "0d5a9732bb72268734342368faf55edb9c553ccd53192d01c2b0db9d234c392a",
+      "record_hash": "517a0c8b4883b29b0bb6f304d10cdf0df5ae31ff8d9821882f4f69a9afa14b62",
+      "payload": {
+        "model": {
+          "alpha": 0.1,
+          "baseline_multiplier": 1.0019608804341897,
+          "bootstrap_models": 100,
+          "feature_names": [
+            "numbers_above_31",
+            "all_numbers_at_most_31",
+            "consecutive_pairs",
+            "lucky_numbers_7_13",
+            "normalized_sum",
+            "distance_from_central_sum",
+            "contains_number_1",
+            "contains_number_2",
+            "contains_number_3",
+            "contains_number_4",
+            "contains_number_5",
+            "contains_number_6",
+            "contains_number_7",
+            "contains_number_8",
+            "contains_number_9",
+            "contains_number_10",
+            "contains_number_11",
+            "contains_number_12",
+            "contains_number_13",
+            "contains_number_14",
+            "contains_number_15",
+            "contains_number_16",
+            "contains_number_17",
+            "contains_number_18",
+            "contains_number_19",
+            "contains_number_20",
+            "contains_number_21",
+            "contains_number_22",
+            "contains_number_23",
+            "contains_number_24",
+            "contains_number_25",
+            "contains_number_26",
+            "contains_number_27",
+            "contains_number_28",
+            "contains_number_29",
+            "contains_number_30",
+            "contains_number_31",
+            "contains_number_32",
+            "contains_number_33",
+            "contains_number_34",
+            "contains_number_35",
+            "contains_number_36",
+            "contains_number_37",
+            "contains_number_38",
+            "contains_number_39",
+            "contains_number_40",
+            "contains_number_41",
+            "contains_number_42",
+            "contains_number_43",
+            "contains_number_44",
+            "contains_number_45",
+            "contains_number_46",
+            "contains_number_47",
+            "contains_number_48",
+            "contains_number_49"
+          ],
+          "feature_set": "number_effects",
+          "historical_validation": {
+            "adjusted_p_value": 0.0029985007496251873,
+            "baseline_poisson_deviance": 2.2386491074029005,
+            "delta_ci_high": -0.3602265806421626,
+            "delta_ci_low": -0.9425834494452793,
+            "deviance_delta": -0.5988868905472134,
+            "feature_set": "number_effects",
+            "final_alpha": 0.1,
+            "game": "loto",
+            "inference_method": "moving_block_bootstrap_and_block_sign_permutation",
+            "mean_poisson_deviance": 1.6397622168556876,
+            "observations": 1478,
+            "outer_folds": 3,
+            "permutation_p_value": 0.0004997501249375312,
+            "qualified": true,
+            "selected_alphas": [
+              1.0,
+              1.0,
+              0.1
+            ],
+            "target": "main_combination",
+            "temporal_block_size": 12,
+            "test_observations": 978
+          },
+          "observations": 1478,
+          "raw_coefficients": [
+            -0.0755726193517934,
+            0.5817591443910126,
+            -0.3411282551714203,
+            0.07513122330977617,
+            -0.3695957826167414,
+            0.5087884007256641,
+            -0.22899150651683345,
+            -0.14753405415522056,
+            -0.032372595597491144,
+            -0.055764812559785416,
+            0.12568249590217717,
+            -0.016388610504829856,
+            0.00868425775958658,
+            0.030724903672742915,
+            0.20297338437486773,
+            0.16991754393379757,
+            0.11225660728759304,
+            0.370658736261943,
+            0.13128873622662932,
+            0.22186820389815431,
+            -0.004851585853863317,
+            0.052679122944339664,
+            0.031857315361037815,
+            0.11629539045431242,
+            0.15491904441402923,
+            0.0063982231906070655,
+            0.0445851351555764,
+            -0.05939224102624446,
+            0.011059225640128116,
+            0.01933264256131071,
+            -0.07336982893804796,
+            -0.11645243093318003,
+            0.07768266428910651,
+            0.1337795456402786,
+            -0.02734316698074916,
+            -0.17887054437442032,
+            -0.15224676227027803,
+            -0.029362745394796566,
+            0.06684366089514578,
+            -0.09605555117705061,
+            -0.19370397831050726,
+            -0.12182326553332282,
+            -0.09730814162004954,
+            0.025721370836550753,
+            -0.016440627443607494,
+            -0.16603166200261374,
+            -0.0669169999597452,
+            -0.05801856202691781,
+            -0.07202441585676504,
+            0.06959695578359938,
+            0.019364796933091358,
+            -0.16015581125671116,
+            -0.07328391088654729,
+            -0.03774910287996985,
+            0.10887609367645786
+          ],
+          "raw_intercept": 0.2632442837794027,
+          "target": "main_combination",
+          "uncertainty_quantile": 0.9
+        },
+        "model_specification": {
+          "format": "loto-lab.popularity-model",
+          "parameters": {
+            "block_size": 12,
+            "bootstrap_models": 100,
+            "feature_set": "number_effects",
+            "game": "loto",
+            "min_train": 500,
+            "outer_folds": 3,
+            "seed": 42,
+            "simulations": 2000,
+            "target": "main_combination",
+            "uncertainty_quantile": 0.9
+          },
+          "runtime": {
+            "numpy": "2.4.2",
+            "python": "3.12.6",
+            "scikit-learn": "1.7.0"
+          },
+          "sha256": "3a3d3984b36387b435688d0a08430fa4023f667d00248eae0ee718cb59069038",
+          "source_files": [
+            {
+              "path": "loto_lab/domain.py",
+              "sha256": "bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558"
+            },
+            {
+              "path": "loto_lab/popularity.py",
+              "sha256": "9db07127e976cb588061b167771be367881f20e6528ca56a6e07b79a59e97e71"
+            },
+            {
+              "path": "loto_lab/popularity_prospective.py",
+              "sha256": "5db81d0bddc4d1a3ec7ad64f4415b1a1f08fab5dea01b23bda6de63d823ef95d"
+            },
+            {
+              "path": "loto_lab/probability.py",
+              "sha256": "5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5"
+            }
+          ],
+          "specification_version": 1
+        },
+        "provenance": {
+          "data": {
+            "draws_snapshot": {
+              "count": 2866,
+              "first_date": "2008-10-06",
+              "last_date": "2026-08-15",
+              "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+            },
+            "files": [
+              {
+                "path": "data/loto.sqlite",
+                "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+                "size": 4169728
+              }
+            ]
+          }
+        }
+      },
+      "payload_canonical_json": "{\"model\":{\"alpha\":0.1,\"baseline_multiplier\":1.0019608804341897,\"bootstrap_models\":100,\"feature_names\":[\"numbers_above_31\",\"all_numbers_at_most_31\",\"consecutive_pairs\",\"lucky_numbers_7_13\",\"normalized_sum\",\"distance_from_central_sum\",\"contains_number_1\",\"contains_number_2\",\"contains_number_3\",\"contains_number_4\",\"contains_number_5\",\"contains_number_6\",\"contains_number_7\",\"contains_number_8\",\"contains_number_9\",\"contains_number_10\",\"contains_number_11\",\"contains_number_12\",\"contains_number_13\",\"contains_number_14\",\"contains_number_15\",\"contains_number_16\",\"contains_number_17\",\"contains_number_18\",\"contains_number_19\",\"contains_number_20\",\"contains_number_21\",\"contains_number_22\",\"contains_number_23\",\"contains_number_24\",\"contains_number_25\",\"contains_number_26\",\"contains_number_27\",\"contains_number_28\",\"contains_number_29\",\"contains_number_30\",\"contains_number_31\",\"contains_number_32\",\"contains_number_33\",\"contains_number_34\",\"contains_number_35\",\"contains_number_36\",\"contains_number_37\",\"contains_number_38\",\"contains_number_39\",\"contains_number_40\",\"contains_number_41\",\"contains_number_42\",\"contains_number_43\",\"contains_number_44\",\"contains_number_45\",\"contains_number_46\",\"contains_number_47\",\"contains_number_48\",\"contains_number_49\"],\"feature_set\":\"number_effects\",\"historical_validation\":{\"adjusted_p_value\":0.0029985007496251873,\"baseline_poisson_deviance\":2.2386491074029005,\"delta_ci_high\":-0.3602265806421626,\"delta_ci_low\":-0.9425834494452793,\"deviance_delta\":-0.5988868905472134,\"feature_set\":\"number_effects\",\"final_alpha\":0.1,\"game\":\"loto\",\"inference_method\":\"moving_block_bootstrap_and_block_sign_permutation\",\"mean_poisson_deviance\":1.6397622168556876,\"observations\":1478,\"outer_folds\":3,\"permutation_p_value\":0.0004997501249375312,\"qualified\":true,\"selected_alphas\":[1.0,1.0,0.1],\"target\":\"main_combination\",\"temporal_block_size\":12,\"test_observations\":978},\"observations\":1478,\"raw_coefficients\":[-0.0755726193517934,0.5817591443910126,-0.3411282551714203,0.07513122330977617,-0.3695957826167414,0.5087884007256641,-0.22899150651683345,-0.14753405415522056,-0.032372595597491144,-0.055764812559785416,0.12568249590217717,-0.016388610504829856,0.00868425775958658,0.030724903672742915,0.20297338437486773,0.16991754393379757,0.11225660728759304,0.370658736261943,0.13128873622662932,0.22186820389815431,-0.004851585853863317,0.052679122944339664,0.031857315361037815,0.11629539045431242,0.15491904441402923,0.0063982231906070655,0.0445851351555764,-0.05939224102624446,0.011059225640128116,0.01933264256131071,-0.07336982893804796,-0.11645243093318003,0.07768266428910651,0.1337795456402786,-0.02734316698074916,-0.17887054437442032,-0.15224676227027803,-0.029362745394796566,0.06684366089514578,-0.09605555117705061,-0.19370397831050726,-0.12182326553332282,-0.09730814162004954,0.025721370836550753,-0.016440627443607494,-0.16603166200261374,-0.0669169999597452,-0.05801856202691781,-0.07202441585676504,0.06959695578359938,0.019364796933091358,-0.16015581125671116,-0.07328391088654729,-0.03774910287996985,0.10887609367645786],\"raw_intercept\":0.2632442837794027,\"target\":\"main_combination\",\"uncertainty_quantile\":0.9},\"model_specification\":{\"format\":\"loto-lab.popularity-model\",\"parameters\":{\"block_size\":12,\"bootstrap_models\":100,\"feature_set\":\"number_effects\",\"game\":\"loto\",\"min_train\":500,\"outer_folds\":3,\"seed\":42,\"simulations\":2000,\"target\":\"main_combination\",\"uncertainty_quantile\":0.9},\"runtime\":{\"numpy\":\"2.4.2\",\"python\":\"3.12.6\",\"scikit-learn\":\"1.7.0\"},\"sha256\":\"3a3d3984b36387b435688d0a08430fa4023f667d00248eae0ee718cb59069038\",\"source_files\":[{\"path\":\"loto_lab/domain.py\",\"sha256\":\"bd1b103cb0cb115f92f2296af55b348c30c2099fb1d5bbc60f0c4eeb1c8cf558\"},{\"path\":\"loto_lab/popularity.py\",\"sha256\":\"9db07127e976cb588061b167771be367881f20e6528ca56a6e07b79a59e97e71\"},{\"path\":\"loto_lab/popularity_prospective.py\",\"sha256\":\"5db81d0bddc4d1a3ec7ad64f4415b1a1f08fab5dea01b23bda6de63d823ef95d\"},{\"path\":\"loto_lab/probability.py\",\"sha256\":\"5e27c6d8cff40a126682a2449d86dfd68fee3b5f8782225264367b3712eae3a5\"}],\"specification_version\":1},\"provenance\":{\"data\":{\"draws_snapshot\":{\"count\":2866,\"first_date\":\"2008-10-06\",\"last_date\":\"2026-08-15\",\"sha256\":\"f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69\"},\"files\":[{\"path\":\"data/loto.sqlite\",\"sha256\":\"9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965\",\"size\":4169728}]}}}"
     }
   ],
-  "scores": []
+  "scores": [
+    {
+      "id": 1,
+      "snapshot_id": 1,
+      "scored_at": "2026-08-16T14:35:48.459926+00:00",
+      "jackpot_winners": 0,
+      "estimated_tickets": 2540937.3037852673,
+      "exposure": 0.13325075378393586,
+      "predicted_winners": 0.08720552158004861,
+      "baseline_predicted_winners": 0.13793111610877473,
+      "model_deviance": 0.17441104316009723,
+      "baseline_deviance": 0.27586223221754946,
+      "deviance_delta": -0.10145118905745223,
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_hash": "09834b1a626aa96543b7c98e7ee2ff3d6d1e9dd92efd5e2d15972f6250c1dcb2",
+      "draw": {
+        "chance": 10,
+        "draw_date": "2026-08-03",
+        "game": "loto",
+        "main": [
+          5,
+          25,
+          37,
+          41,
+          42
+        ],
+        "prizes": [
+          {
+            "payout": 6000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 155458.1,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 1997.0,
+            "rank": 3,
+            "winners": 19
+          },
+          {
+            "payout": 684.2,
+            "rank": 4,
+            "winners": 200
+          },
+          {
+            "payout": 85.9,
+            "rank": 5,
+            "winners": 952
+          },
+          {
+            "payout": 28.3,
+            "rank": 6,
+            "winners": 10371
+          },
+          {
+            "payout": 14.7,
+            "rank": 7,
+            "winners": 15529
+          },
+          {
+            "payout": 5.4,
+            "rank": 8,
+            "winners": 166801
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 235156
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    },
+    {
+      "id": 2,
+      "snapshot_id": 2,
+      "scored_at": "2026-08-16T14:35:48.459926+00:00",
+      "jackpot_winners": 1,
+      "estimated_tickets": 2540937.3037852673,
+      "exposure": 1.3325075378393585,
+      "predicted_winners": 0.7264788945006089,
+      "baseline_predicted_winners": 1.3357971780296216,
+      "model_deviance": 0.09204948364533783,
+      "baseline_deviance": 0.09253785458396957,
+      "deviance_delta": -0.0004883709386317436,
+      "previous_hash": "09834b1a626aa96543b7c98e7ee2ff3d6d1e9dd92efd5e2d15972f6250c1dcb2",
+      "record_hash": "2c402932daa8d076dce5297e949d6acff6e41623bfcbb6419a8e2c081b57b99d",
+      "draw": {
+        "chance": 10,
+        "draw_date": "2026-08-03",
+        "game": "loto",
+        "main": [
+          5,
+          25,
+          37,
+          41,
+          42
+        ],
+        "prizes": [
+          {
+            "payout": 6000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 155458.1,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 1997.0,
+            "rank": 3,
+            "winners": 19
+          },
+          {
+            "payout": 684.2,
+            "rank": 4,
+            "winners": 200
+          },
+          {
+            "payout": 85.9,
+            "rank": 5,
+            "winners": 952
+          },
+          {
+            "payout": 28.3,
+            "rank": 6,
+            "winners": 10371
+          },
+          {
+            "payout": 14.7,
+            "rank": 7,
+            "winners": 15529
+          },
+          {
+            "payout": 5.4,
+            "rank": 8,
+            "winners": 166801
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 235156
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    },
+    {
+      "id": 3,
+      "snapshot_id": 3,
+      "scored_at": "2026-08-16T14:35:48.459926+00:00",
+      "jackpot_winners": 1,
+      "estimated_tickets": 2540937.3037852673,
+      "exposure": 1.3325075378393585,
+      "predicted_winners": 0.6613401451605158,
+      "baseline_predicted_winners": 1.3357971780296216,
+      "model_deviance": 0.1496542497541632,
+      "baseline_deviance": 0.09253785458396957,
+      "deviance_delta": 0.05711639517019362,
+      "previous_hash": "2c402932daa8d076dce5297e949d6acff6e41623bfcbb6419a8e2c081b57b99d",
+      "record_hash": "4b6223f55a5db0ead15c097f71206405caba54ad5d89a009b399b526b0feb283",
+      "draw": {
+        "chance": 10,
+        "draw_date": "2026-08-03",
+        "game": "loto",
+        "main": [
+          5,
+          25,
+          37,
+          41,
+          42
+        ],
+        "prizes": [
+          {
+            "payout": 6000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 155458.1,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 1997.0,
+            "rank": 3,
+            "winners": 19
+          },
+          {
+            "payout": 684.2,
+            "rank": 4,
+            "winners": 200
+          },
+          {
+            "payout": 85.9,
+            "rank": 5,
+            "winners": 952
+          },
+          {
+            "payout": 28.3,
+            "rank": 6,
+            "winners": 10371
+          },
+          {
+            "payout": 14.7,
+            "rank": 7,
+            "winners": 15529
+          },
+          {
+            "payout": 5.4,
+            "rank": 8,
+            "winners": 166801
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 235156
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    },
+    {
+      "id": 4,
+      "snapshot_id": 4,
+      "scored_at": "2026-08-16T14:35:48.459926+00:00",
+      "jackpot_winners": 1,
+      "estimated_tickets": 3591614.8140685176,
+      "exposure": 1.8834993707370336,
+      "predicted_winners": 2.4387741589814977,
+      "baseline_predicted_winners": 1.8881492770620354,
+      "model_deviance": 1.0945572795570169,
+      "baseline_deviance": 0.5051042924476241,
+      "deviance_delta": 0.5894529871093928,
+      "previous_hash": "4b6223f55a5db0ead15c097f71206405caba54ad5d89a009b399b526b0feb283",
+      "record_hash": "fee969088446c96df18a644267e584e5fdd3351965b4ed82507026222d202c4f",
+      "draw": {
+        "chance": 9,
+        "draw_date": "2026-08-05",
+        "game": "loto",
+        "main": [
+          12,
+          22,
+          24,
+          33,
+          38
+        ],
+        "prizes": [
+          {
+            "payout": 7000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 179379.7,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 972.9,
+            "rank": 3,
+            "winners": 45
+          },
+          {
+            "payout": 383.2,
+            "rank": 4,
+            "winners": 412
+          },
+          {
+            "payout": 47.3,
+            "rank": 5,
+            "winners": 1995
+          },
+          {
+            "payout": 18.1,
+            "rank": 6,
+            "winners": 18723
+          },
+          {
+            "payout": 9.4,
+            "rank": 7,
+            "winners": 27825
+          },
+          {
+            "payout": 4.0,
+            "rank": 8,
+            "winners": 255392
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 332393
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    },
+    {
+      "id": 5,
+      "snapshot_id": 5,
+      "scored_at": "2026-08-16T14:35:48.459926+00:00",
+      "jackpot_winners": 1,
+      "estimated_tickets": 2540937.3037852673,
+      "exposure": 1.3325075378393585,
+      "predicted_winners": 0.6461386660321637,
+      "baseline_predicted_winners": 1.3357971780296216,
+      "model_deviance": 0.16575962193171856,
+      "baseline_deviance": 0.09253785458396957,
+      "deviance_delta": 0.07322176734774899,
+      "previous_hash": "fee969088446c96df18a644267e584e5fdd3351965b4ed82507026222d202c4f",
+      "record_hash": "ba68304f097fec84e86572cce1f5af1651ae3829856918c1d2e0082ed367fdc6",
+      "draw": {
+        "chance": 10,
+        "draw_date": "2026-08-03",
+        "game": "loto",
+        "main": [
+          5,
+          25,
+          37,
+          41,
+          42
+        ],
+        "prizes": [
+          {
+            "payout": 6000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 155458.1,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 1997.0,
+            "rank": 3,
+            "winners": 19
+          },
+          {
+            "payout": 684.2,
+            "rank": 4,
+            "winners": 200
+          },
+          {
+            "payout": 85.9,
+            "rank": 5,
+            "winners": 952
+          },
+          {
+            "payout": 28.3,
+            "rank": 6,
+            "winners": 10371
+          },
+          {
+            "payout": 14.7,
+            "rank": 7,
+            "winners": 15529
+          },
+          {
+            "payout": 5.4,
+            "rank": 8,
+            "winners": 166801
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 235156
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    },
+    {
+      "id": 6,
+      "snapshot_id": 6,
+      "scored_at": "2026-08-19T06:09:24.374450+00:00",
+      "jackpot_winners": 1,
+      "estimated_tickets": 3118557.6300727064,
+      "exposure": 1.635420733548924,
+      "predicted_winners": 1.932282917181032,
+      "baseline_predicted_winners": 1.6386275980670082,
+      "model_deviance": 0.5471615092946447,
+      "baseline_deviance": 0.28953707403181683,
+      "deviance_delta": 0.25762443526282786,
+      "previous_hash": "ba68304f097fec84e86572cce1f5af1651ae3829856918c1d2e0082ed367fdc6",
+      "record_hash": "8e4a53bd6b67cfac6061cb662e78eae8bea6ec79c23f8479c956f8e789b8a273",
+      "draw": {
+        "chance": 5,
+        "draw_date": "2026-08-17",
+        "game": "loto",
+        "main": [
+          6,
+          7,
+          10,
+          15,
+          38
+        ],
+        "prizes": [
+          {
+            "payout": 2000000.0,
+            "rank": 1,
+            "winners": 1
+          },
+          {
+            "payout": 125096.8,
+            "rank": 2,
+            "winners": 0
+          },
+          {
+            "payout": 3705.4,
+            "rank": 3,
+            "winners": 42
+          },
+          {
+            "payout": 327.7,
+            "rank": 4,
+            "winners": 336
+          },
+          {
+            "payout": 33.6,
+            "rank": 5,
+            "winners": 1957
+          },
+          {
+            "payout": 15.2,
+            "rank": 6,
+            "winners": 15494
+          },
+          {
+            "payout": 7.0,
+            "rank": 7,
+            "winners": 26277
+          },
+          {
+            "payout": 3.6,
+            "rank": 8,
+            "winners": 202093
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 288613
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2867,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-17",
+            "sha256": "7208acb2350340a0138b4a1e0e04005451461f703908efa3875ef0a05c630992"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "220369c4cee3cd25eef2a6500c2b59bff77dcf70f4102641f5de233e440d20ae",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      }
+    }
+  ]
 }
