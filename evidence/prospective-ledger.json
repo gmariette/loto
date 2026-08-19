@@ -1,7 +1,7 @@
 {
   "format": "loto-lab.prospective-ledger",
   "schema_version": 4,
-  "exported_at": "2026-08-01T14:21:22.737244+00:00",
+  "exported_at": "2026-08-16T14:35:48.491223+00:00",
   "forecasts": [
     {
       "id": 1,
@@ -77,20 +77,116 @@
       "record_hash": "39d08472180461bb0413a405fb705bf8e0bd8cc01522a4477132c870432abbc7"
     }
   ],
-  "scores": [],
+  "scores": [
+    {
+      "id": 1,
+      "forecast_id": 1,
+      "scored_at": "2026-08-16T14:35:48.487560+00:00",
+      "observed_schedule_ev": 1.0702285849042483,
+      "error": 0.013870847708140621,
+      "absolute_error": 0.013870847708140621,
+      "covered": 1,
+      "observed_positive": 0,
+      "false_positive": 0,
+      "false_negative": 0,
+      "metrics_version": 1,
+      "draw": {
+        "chance": 4,
+        "code_payout": 20000.0,
+        "code_winners": 10,
+        "draw_date": "2026-08-01",
+        "game": "loto",
+        "main": [
+          5,
+          6,
+          8,
+          30,
+          37
+        ],
+        "prizes": [
+          {
+            "payout": 5000000.0,
+            "rank": 1,
+            "winners": 0
+          },
+          {
+            "payout": 233029.5,
+            "rank": 2,
+            "winners": 1
+          },
+          {
+            "payout": 1236.4,
+            "rank": 3,
+            "winners": 46
+          },
+          {
+            "payout": 443.0,
+            "rank": 4,
+            "winners": 463
+          },
+          {
+            "payout": 50.2,
+            "rank": 5,
+            "winners": 2440
+          },
+          {
+            "payout": 18.5,
+            "rank": 6,
+            "winners": 23747
+          },
+          {
+            "payout": 9.5,
+            "rank": 7,
+            "winners": 35802
+          },
+          {
+            "payout": 4.0,
+            "rank": 8,
+            "winners": 335317
+          },
+          {
+            "payout": 2.2,
+            "rank": 9,
+            "winners": 448180
+          }
+        ]
+      },
+      "provenance": {
+        "data": {
+          "draws_snapshot": {
+            "count": 2866,
+            "first_date": "2008-10-06",
+            "last_date": "2026-08-15",
+            "sha256": "f9aecb463045b162ec635695c27a7eecf326d979804a5563358750d602823f69"
+          },
+          "files": [
+            {
+              "path": "data/loto.sqlite",
+              "sha256": "9e34f96c6aa226ef43ceade1c01ed14b9c27c7e61c8fdf96b4af3cb04733d965",
+              "size": 4169728
+            }
+          ]
+        },
+        "result_source": "https://www.sto.api.fdj.fr/anonymous/service-draw-info/v3/documentations/1a2b3c4d-9876-4562-b3fc-2c963f66afp6"
+      },
+      "hash_version": 2,
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_hash": "81473765b39264a52d45c9634ab097629e446c8f170cdd43fe34cd46f1314863"
+    }
+  ],
   "ledger": {
     "valid": true,
     "errors": [],
     "forecasts": 1,
-    "scores": 0,
+    "scores": 1,
     "forecast_head_hash": "39d08472180461bb0413a405fb705bf8e0bd8cc01522a4477132c870432abbc7",
-    "score_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-    "pending": 1,
+    "score_head_hash": "81473765b39264a52d45c9634ab097629e446c8f170cdd43fe34cd46f1314863",
+    "pending": 0,
     "first_target_date": "2026-08-01",
     "last_target_date": "2026-08-01",
-    "mean_bias": null,
-    "mae": null,
-    "coverage": null,
+    "mean_bias": 0.013870847708140621,
+    "mae": 0.013870847708140621,
+    "coverage": 1.0,
     "false_positives": 0,
     "false_negatives": 0,
     "benchmark_observations": 0,

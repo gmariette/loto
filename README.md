@@ -1,5 +1,10 @@
 # Loto Lab
 
+> **Projet archive le 19 aout 2026.** L'etude n'a trouve aucun avantage predictif
+> reproductible sur les numeros. Le depot reste disponible comme resultat negatif,
+> protocole de validation temporelle et ensemble de preuves auditables. Voir
+> [ARCHIVE.md](ARCHIVE.md) pour la decision finale.
+
 Laboratoire Python reproductible pour tester si l'historique Loto, Super Loto et Grand Loto
 de la FDJ contient un signal
 predictif exploitable. Le projet calcule les probabilites exactes, audite l'uniformite des
@@ -70,8 +75,8 @@ loto-lab db-info --db data/loto.sqlite
 Si la chaine TLS de Python est defectueuse sur macOS, le telechargement retente avec `curl` en
 conservant la verification des certificats; aucun mode non securise n'est utilise.
 
-La base SQLite locale contient `5 566` tirages entre 1996 et juillet 2026, leurs numeros, le jeu,
-le regime, l'archive source, `40 660` observations par rang et `1 519` gains par code. Elle est
+La base SQLite locale contient `5 574` tirages entre 1996 et le 17 aout 2026, leurs numeros, le jeu,
+le regime, l'archive source, `40 732` observations par rang et `1 527` gains par code. Elle est
 reproductible et ignoree par Git afin d'eviter de versionner des donnees derivees et vite obsoletes.
 
 Analyser le regime actuel `5/49 + Chance` directement depuis SQLite :
@@ -462,12 +467,12 @@ etre remplaces par les montants du tirage etudie. La simulation ne modelise pas 
 colonnes attendues sont `date_de_tirage`, les colonnes `boule_N` et le numero special. Les doublons
 sont retires et les tirages dates sont tries chronologiquement. Les archives sont segmentees ainsi :
 
-- `2 860` tirages compatibles `5/49 + Chance` depuis octobre 2008 : 2 789 Loto, 60 Super Loto
+- `2 867` tirages compatibles `5/49 + Chance` depuis octobre 2008 : 2 796 Loto, 60 Super Loto
   et 11 Grand Loto ;
 - `2 707` tirages `6/49 + complementaire` entre janvier 1996 et octobre 2008 : 2 664 Loto et
   43 Super Loto.
 
-Ces comptes decrivent `data/loto.sqlite` arrete au tirage du 1er aout 2026 inclus.
+Ces comptes decrivent `data/loto.sqlite` arrete au tirage du 17 aout 2026 inclus.
 
 Ces regimes ne sont jamais fusionnes dans un test ou un backtest.
 

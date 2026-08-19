@@ -274,3 +274,86 @@ Cote numeros, aucun des sept modeles restants ne se qualifie : la borne basse de
 reste negative pour tous (`rolling_ridge_ranker` : `+0,02746`, IC `[-0,00061 ; +0,05575]`,
 Holm `0,420`; `ridge_ranker` : `+0,02084`, IC `[-0,00553 ; +0,04720]`, Holm `0,864`). La decision
 publiee reste `abstention`.
+
+## Rattrapage du 16 aout et experience du 17 aout
+
+L'archive officielle et la base ont ete actualisees jusqu'au tirage du 15 aout 2026 inclus. Les
+six resultats ajoutes sont utilises pour scorer les preuves anterieures et pour un replay
+walk-forward; aucune prevision retrospective n'est ajoutee au registre append-only.
+
+Les preuves reellement figees donnent :
+
+- le 3 aout, resultat `5 25 37 41 42`, Chance `10` : les variantes v0.18, v0.19, v0.20, v0.22 et
+  v0.25 trouvent respectivement `1`, `2`, `1`, `1` et `1` numero principal, aucun Chance ;
+- le 5 aout, resultat `12 22 24 33 38`, Chance `9` : la v0.25 ne trouve aucun numero principal et
+  trouve le Chance, qui etait encore une sortie forcee non qualifiee ;
+- la prevision de valeur du 1er aout annonce `1,08410 EUR` contre une EV observee de
+  `1,07023 EUR`, soit `0,01387 EUR` d'erreur absolue; son intervalle couvre le resultat et sa
+  decision `no_bet` reste correcte. Cette preuve ancienne ne possede pas de benchmark preregistre.
+
+Les cinq snapshots de popularite ont aussi ete scores. Pour `main_combination`, les deltas de
+deviance prospectifs sont `-0,00049` pour la base, `+0,05712` pour les interactions et `+0,07322`
+pour `number_effects` le 3 aout, puis `+0,58945` pour `number_effects` le 5 aout. Un delta positif
+est moins bon que la reference uniforme. Deux observations, placees en plus dans deux cohortes
+distinctes par leurs anciennes graines datees, ne permettent ni de rejeter ni de confirmer la
+qualification historique du modele de foule.
+
+La version 0.27 a ensuite ete rejouee strictement sur les six dates manquees. Chaque ligne ne voit
+que les tirages anterieurs a sa cible :
+
+| cible | grille Top-5 v0.27 | hits | delta Brier contre uniforme |
+| --- | --- | ---: | ---: |
+| 3 aout | `1 11 14 33 43` | 0 | `+0,000190` |
+| 5 aout | `11 14 23 33 43` | 1 | `-0,000295` |
+| 8 aout | `11 14 23 33 43` | 0 | `+0,000148` |
+| 10 aout | `11 14 23 33 43` | 1 | `-0,000062` |
+| 12 aout | `11 14 23 33 43` | 0 | `+0,000180` |
+| 15 aout | `11 14 23 33 43` | 0 | `+0,001148` |
+
+Le total vaut `2` hits contre `3,061` attendus sous l'uniforme et le delta Brier moyen vaut
+`+0,000218`, donc le modele est moins bon sur cette courte tranche. Sous le null hypergeometrique,
+la probabilite d'obtenir au plus deux hits en six tirages vaut `38,70 %` : ce resultat est banal et
+ne justifie aucun changement de poids. Le Chance experimental trouve une date sur six, evenement
+dont la probabilite d'arriver au moins une fois sous l'uniforme vaut `46,86 %`; la sortie publiee
+reste l'abstention.
+
+L'experience suivante utilise la graine fixe `42`, qui doit etre conservee sur les prochaines
+echeances afin d'accumuler une seule cohorte au lieu d'en ouvrir une par date. Pour le 17 aout :
+
+- Top-5 brut du Ridge : `1 11 14 33 43` ;
+- grille anti-partage : `1 2 33 43 44` ;
+- Chance experimental : `2`, conserve uniquement comme repli de la grille forcee; le payload
+  scientifique garde `chance_status = abstention` et ne le presente pas comme une prediction ;
+- perte de hit attendue : `0,003779` ;
+- multiplicateur de popularite ponctuel : `0,28630`, borne conservatrice a 90 % : `0,39103`,
+  contre `1,34051` pour la grille Top-5 brute.
+
+Le modele de numeros reste `forced_experimental` : son delta Brier historique vaut
+`+0,00018935`, son uplift Top-5 `+0,01719` avec IC `[-0,00954 ; +0,04525]`, et ses deux p-values
+Holm valent `1`. La cohorte v0.27 des numeros est
+`435a8f21d6e4dae9d9332f42370fa22183b48351755b9b10e78764b9299c4e25`; celle de popularite est
+`3a3d3984b36387b435688d0a08430fa4023f667d00248eae0ee718cb59069038`.
+
+Le resultat officiel du 17 aout est `6 7 10 15 38`, Chance `5`. Le Top-5 brut et la grille
+anti-partage obtiennent tous deux zero hit principal; le Chance experimental `2` est egalement
+faux. Le score de Brier du Ridge vaut `0,0920674` contre `0,0916285` pour l'uniforme, soit un delta
+defavorable de `+0,00043895`. Zero hit arrive avec une probabilite de `56,95 %` pour une grille
+uniforme : ce nouvel echec n'est pas en lui-meme une anomalie.
+
+Sur les sept tirages rejoues du 3 au 17 aout, le total reste donc a deux hits contre `3,571`
+attendus, avec un delta Brier moyen de `+0,00024966`. La probabilite d'obtenir au plus deux hits
+sous l'uniforme vaut `28,05 %`; l'echantillon reste trop court pour conclure, mais il ne donne
+aucun motif de lever l'abstention.
+
+Le modele de foule v0.27 a predit `1,9323` gagnant de la combinaison principale, contre un gagnant
+observe et `1,6386` pour la reference uniforme. Sa deviance vaut `0,54716` contre `0,28954`, soit
+un delta defavorable de `+0,25762`. Les cohortes v0.27 de numeros et de popularite ont maintenant
+chacune un score sur 100 et restent `insufficient_data`.
+
+Apres scoring, les tetes sont `1f20e2e384fa576c3c263a84393762e434ad5d5b0d410d58a94391a6f49edcd1`
+pour les previsions de numeros, `770667ee3e1b535c200b67d6c853aa859e9be3ab765f00bf9bb83252ebd36f28`
+pour leurs scores, `517a0c8b4883b29b0bb6f304d10cdf0df5ae31ff8d9821882f4f69a9afa14b62`
+pour les snapshots de foule et `8e4a53bd6b67cfac6061cb662e78eae8bea6ec79c23f8479c956f8e789b8a273`
+pour leurs scores. Les empreintes des bundles sont respectivement
+`ad1d18421e416ae18257433f0aa6e84c5ffd95d5c77b28f244075f24bc9b3c7b` et
+`4fc86d3812ab1645cd769d22b322906ffdce680bf9cd90f1d6acdadb4a8fda9c`.

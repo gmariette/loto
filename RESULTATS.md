@@ -203,8 +203,10 @@ utilise uniquement les 100 premieres, avec bootstrap et permutation par blocs de
 suivantes restent visibles en surveillance mais ne permettent pas de refaire le test jusqu'a obtenir
 un succes. La version 0.12.0 remplace ensuite cette cle de regroupement trop large.
 
-Le registre contient actuellement zero score et zero observation avec benchmark. La preuve v0.7
-sera exclue de la comparaison au benchmark, car celui-ci n'avait pas ete publie avant son tirage.
+Le score importe le 16 aout reconstruit une EV observee de `1,07023 EUR`, contre `1,08410 EUR`
+annonce avant le tirage : erreur absolue `0,01387 EUR`, intervalle couvert et aucune erreur de
+decision. Il n'existe toujours aucune observation avec benchmark, car celui-ci n'avait pas ete
+publie avant cette preuve v0.7; ce score reste donc exclu de la comparaison modele-reference.
 
 La version 0.11.0 automatise le cycle necessaire pour atteindre ces 100 observations. Un manifeste
 JSON strict pilote le preflight, l'enregistrement, l'attente du resultat, le scoring et l'export.
